@@ -8,10 +8,12 @@ import { createLoopbackJsonStream } from "./loopback.js";
 import { createStorageAdapter } from "./storage.js";
 import { createDecaidApi } from "./decaid-api.js";
 import { buildDiscoveryMessages, DISCOVERY_TOPICS_KEY } from "./discovery.js";
+import { createShotEventMapper } from "./shot-events.js";
 
 export const PLUGIN_ID = "mqtt.reaplugin";
 
 export function createPlugin(host) {
+  const mapShotEvent = createShotEventMapper();
   const log = (message) => {
     try { host.log(`[mqtt] ${message}`); } catch {}
   };
@@ -111,7 +113,7 @@ export function createPlugin(host) {
 
   function queueTelemetryPublish(rawState) {
     const intervalMs = telemetryPublishIntervalMs(rawState);
-    if (!bridge || intervalMs === null || telemetryPublishTimer) return;
+    if (!bridge || !runtime.machineConnected || intervalMs === null || telemetryPublishTimer) return;
     const delay = Math.max(0, intervalMs - (Date.now() - lastPublishedAt));
     telemetryPublishTimer = setTimeout(() => {
       telemetryPublishTimer = null;
@@ -206,16 +208,9 @@ export function createPlugin(host) {
       : "Home Assistant discovery disabled; retained entities retracted");
   }
 
-  function publishShotEvent(frame) {
+  function publishShotEvent(event) {
     if (!bridge?.connected || !config.haAutoDiscoveryEnable) return;
-    bridge.publish(`${config.topicPrefix}/event/shot`, {
-      event_type: frame.event,
-      shot_id: frame.shotId ?? null,
-      phase: frame.state,
-      source_timestamp: frame.timestamp,
-      scale_lost: Boolean(frame.scaleLost),
-      decision: frame.decision ?? null,
-    }, { qos: 1, retain: false });
+    bridge.publish(`${config.topicPrefix}/event/shot`, event, { qos: 1, retain: false });
   }
 
   function applyDevices(devices) {
@@ -325,13 +320,14 @@ export function createPlugin(host) {
         if (!Number.isFinite(levels?.currentLevel) || !Number.isFinite(levels?.refillLevel)) return;
         runtime.waterLevelMm = levels.currentLevel;
         runtime.refillLevelMm = levels.refillLevel;
-        enqueuePublish();
+        queueTelemetryPublish(runtime.lastState);
       },
     });
     addStream({
       path: "/ws/v1/machine/shotSettings",
       onJson: (settings) => {
         if (!settings || typeof settings !== "object") return;
+        if (JSON.stringify(settings) === JSON.stringify(runtime.shotSettings)) return;
         runtime.shotSettings = settings;
         enqueuePublish();
       },
@@ -345,10 +341,14 @@ export function createPlugin(host) {
         const stopReason = decision && ["stop", "abort", "terminal"].includes(decision.kind)
           ? decision.reason
           : runtime.shotState?.stopReason;
+        const changed = frame.state !== runtime.shotState?.state
+          || frame.scaleLost !== runtime.shotState?.scaleLost
+          || stopReason !== runtime.shotState?.stopReason;
         runtime.shotState = { ...frame, stopReason };
-        if (runtime.shotStreamFirstFrame) runtime.shotStreamFirstFrame = false;
-        else publishShotEvent(frame);
-        enqueuePublish();
+        const event = mapShotEvent(frame, runtime.shotStreamFirstFrame);
+        runtime.shotStreamFirstFrame = false;
+        if (event) publishShotEvent(event);
+        if (changed || event) enqueuePublish();
       },
     });
     addStream({

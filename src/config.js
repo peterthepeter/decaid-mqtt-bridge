@@ -31,13 +31,19 @@ export function normalizeConfig(raw, storedUniqueId) {
     port = DEFAULT_PORT;
   }
 
-  let publishIntervalMs = raw.PublishIntervalMs;
+  const hasHeartbeatSeconds = raw.HeartbeatSeconds !== undefined
+    && raw.HeartbeatSeconds !== null && raw.HeartbeatSeconds !== "";
+  let publishIntervalMs = hasHeartbeatSeconds
+    ? Number(raw.HeartbeatSeconds) * 1000
+    : raw.PublishIntervalMs;
   if (publishIntervalMs === undefined || publishIntervalMs === null || publishIntervalMs === "") {
     publishIntervalMs = DEFAULT_PUBLISH_INTERVAL_MS;
   }
   publishIntervalMs = Number(publishIntervalMs);
   if (!Number.isFinite(publishIntervalMs) || publishIntervalMs < MIN_PUBLISH_INTERVAL_MS) {
-    warnings.push(`publishIntervalMs must be >= ${MIN_PUBLISH_INTERVAL_MS}, got ${raw.PublishIntervalMs}`);
+    warnings.push(hasHeartbeatSeconds
+      ? `heartbeat seconds must be >= 1, got ${raw.HeartbeatSeconds}`
+      : `publishIntervalMs must be >= ${MIN_PUBLISH_INTERVAL_MS}, got ${raw.PublishIntervalMs}`);
     publishIntervalMs = DEFAULT_PUBLISH_INTERVAL_MS;
   }
 

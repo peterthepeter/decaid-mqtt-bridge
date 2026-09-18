@@ -155,10 +155,16 @@ The discovery set contains:
 - connectivity, shot-active, and scale-loss binary sensors;
 - wake/sleep and steam-heater switches;
 - a profile select populated with available profile titles;
-- a shot event entity with event types `state`, `decision`, and `terminal`.
+- a shot event entity with milestones `Bezug gestartet`, `Bezug beendet`, and
+  `Bezug abgebrochen`. Internal phase changes and advance decisions are suppressed.
 
 `T/event/shot` carries a JSON object containing `event_type`, `shot_id`,
-`phase`, `source_timestamp`, `scale_lost`, and `decision`. The initial
+`phase`, `source_timestamp`, `scale_lost`, `stop_reason`, and `decision`.
+Start is reported on preheating (or pouring if first observed there); successful
+completion on finished, and abort/terminal decisions as cancellation. The last
+stop decision is carried through to completion. Each milestone is emitted once
+per observed lifecycle; existing automations using the old technical event types
+must be updated. The initial
 shot-state frame after a WebSocket connect is a replay and is deliberately not
 published as a Home Assistant event.
 

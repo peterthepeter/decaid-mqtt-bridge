@@ -98,13 +98,14 @@ var __mqttBundle = (() => {
       warnings.push(`port must be an integer in 1-65535, got ${raw.Port}`);
       port = DEFAULT_PORT;
     }
-    let publishIntervalMs = raw.PublishIntervalMs;
+    const hasHeartbeatSeconds = raw.HeartbeatSeconds !== void 0 && raw.HeartbeatSeconds !== null && raw.HeartbeatSeconds !== "";
+    let publishIntervalMs = hasHeartbeatSeconds ? Number(raw.HeartbeatSeconds) * 1e3 : raw.PublishIntervalMs;
     if (publishIntervalMs === void 0 || publishIntervalMs === null || publishIntervalMs === "") {
       publishIntervalMs = DEFAULT_PUBLISH_INTERVAL_MS;
     }
     publishIntervalMs = Number(publishIntervalMs);
     if (!Number.isFinite(publishIntervalMs) || publishIntervalMs < MIN_PUBLISH_INTERVAL_MS) {
-      warnings.push(`publishIntervalMs must be >= ${MIN_PUBLISH_INTERVAL_MS}, got ${raw.PublishIntervalMs}`);
+      warnings.push(hasHeartbeatSeconds ? `heartbeat seconds must be >= 1, got ${raw.HeartbeatSeconds}` : `publishIntervalMs must be >= ${MIN_PUBLISH_INTERVAL_MS}, got ${raw.PublishIntervalMs}`);
       publishIntervalMs = DEFAULT_PUBLISH_INTERVAL_MS;
     }
     const enableTls = raw.EnableTls === void 0 || raw.EnableTls === null ? true : Boolean(raw.EnableTls);
@@ -12714,13 +12715,55 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     return { read, write, resolvePendingRead };
   }
 
+  // src/shot-events.js
+  var SHOT_EVENT_TYPES = ["Bezug gestartet", "Bezug beendet", "Bezug abgebrochen"];
+  function createShotEventMapper() {
+    let shotId = null;
+    let phase = "idle";
+    let started = false;
+    let closed = false;
+    let stopDecision = null;
+    return (frame, replay = false) => {
+      if (frame.shotId !== shotId || frame.state === "preheating" && phase === "idle") {
+        shotId = frame.shotId ?? null;
+        started = false;
+        closed = false;
+        stopDecision = null;
+      }
+      const kind = frame.decision?.kind;
+      if (["stop", "abort", "terminal"].includes(kind)) stopDecision = frame.decision;
+      let eventType = null;
+      if (!closed && (kind === "abort" || kind === "terminal")) {
+        closed = true;
+        eventType = SHOT_EVENT_TYPES[2];
+      } else if (!closed && frame.state === "finished") {
+        closed = true;
+        eventType = SHOT_EVENT_TYPES[1];
+      } else if (!closed && !started && ["preheating", "pouring"].includes(frame.state)) {
+        started = true;
+        eventType = SHOT_EVENT_TYPES[0];
+      }
+      phase = frame.state;
+      if (replay || !eventType) return null;
+      return {
+        event_type: eventType,
+        shot_id: frame.shotId ?? null,
+        phase: frame.state,
+        source_timestamp: frame.timestamp,
+        scale_lost: Boolean(frame.scaleLost),
+        stop_reason: eventType === SHOT_EVENT_TYPES[0] ? null : stopDecision?.reason ?? null,
+        decision: eventType === SHOT_EVENT_TYPES[0] ? null : stopDecision
+      };
+    };
+  }
+
   // src/discovery.js
   var DISCOVERY_TOPICS_KEY = "haDiscoveryTopics";
   var SENSOR_DEFINITIONS = [
     ["State", "state", "state", {}],
     ["Substate", "substate", "substate", {}],
-    ["Water Level", "water_level", "water_level_ml", { device_class: "volume_storage", state_class: "measurement", unit_of_measurement: "mL", icon: "mdi:water" }],
-    ["Water Level Height", "water_level_mm", "water_level_mm", { device_class: "distance", state_class: "measurement", unit_of_measurement: "mm", icon: "mdi:cup-water" }],
+    ["Water Level", "water_level", "water_level_ml", { device_class: "volume_storage", state_class: "measurement", unit_of_measurement: "mL", suggested_display_precision: 0, icon: "mdi:water" }],
+    ["Water Level Height", "water_level_mm", "water_level_mm", { device_class: "distance", state_class: "measurement", unit_of_measurement: "mm", suggested_display_precision: 1, icon: "mdi:cup-water" }],
     ["Refill Threshold", "refill_threshold", "refill_level_mm", { device_class: "distance", unit_of_measurement: "mm", icon: "mdi:water-alert" }],
     ["Head Temperature", "head_temp", "head_temperature", { device_class: "temperature", state_class: "measurement", unit_of_measurement: "\xB0C" }],
     ["Mix Temperature", "mix_temp", "mix_temperature", { device_class: "temperature", state_class: "measurement", unit_of_measurement: "\xB0C" }],
@@ -12730,8 +12773,8 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     ["Configured Group Temperature", "configured_group_temp", "configured_group_temperature", { device_class: "temperature", unit_of_measurement: "\xB0C" }],
     ["Pressure", "pressure", "pressure", { device_class: "pressure", state_class: "measurement", unit_of_measurement: "bar" }],
     ["Target Pressure", "target_pressure", "target_pressure", { device_class: "pressure", state_class: "measurement", unit_of_measurement: "bar" }],
-    ["Flow", "flow", "flow", { state_class: "measurement", unit_of_measurement: "mL/s", icon: "mdi:water" }],
-    ["Target Flow", "target_flow", "target_flow", { state_class: "measurement", unit_of_measurement: "mL/s", icon: "mdi:water" }],
+    ["Flow", "flow", "flow", { state_class: "measurement", unit_of_measurement: "mL/s", suggested_display_precision: 2, icon: "mdi:water" }],
+    ["Target Flow", "target_flow", "target_flow", { state_class: "measurement", unit_of_measurement: "mL/s", suggested_display_precision: 2, icon: "mdi:water" }],
     ["Espresso Count", "espresso_count", "espresso_count", { state_class: "total_increasing", icon: "mdi:coffee" }],
     ["Steaming Count", "steaming_count", "steaming_count", { state_class: "total_increasing", icon: "mdi:weather-dust" }],
     ["Target Steam Temperature", "target_steam_temp", "target_steam_temperature", { device_class: "temperature", unit_of_measurement: "\xB0C" }],
@@ -12741,7 +12784,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     ["Target Hot Water Duration", "target_hot_water_duration", "target_hot_water_duration_s", { device_class: "duration", unit_of_measurement: "s" }],
     ["Target Shot Volume", "target_shot_volume", "target_shot_volume_ml", { device_class: "volume", unit_of_measurement: "mL" }],
     ["Scale Weight", "scale_weight", "scale_weight_g", { device_class: "weight", state_class: "measurement", unit_of_measurement: "g", availability: "scale" }],
-    ["Scale Weight Flow", "scale_weight_flow", "scale_weight_flow_g_s", { state_class: "measurement", unit_of_measurement: "g/s", icon: "mdi:water", availability: "scale" }],
+    ["Scale Weight Flow", "scale_weight_flow", "scale_weight_flow_g_s", { state_class: "measurement", unit_of_measurement: "g/s", suggested_display_precision: 2, icon: "mdi:water", availability: "scale" }],
     ["Scale Battery", "scale_battery", "scale_battery_percent", { device_class: "battery", state_class: "measurement", unit_of_measurement: "%", availability: "scale" }],
     ["Scale Timer", "scale_timer", "scale_timer_ms", { device_class: "duration", unit_of_measurement: "ms", availability: "scale" }],
     ["Shot Phase", "shot_phase", "shot_phase", { icon: "mdi:coffee-maker" }],
@@ -12791,7 +12834,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Plugin", sw_version: "0.2.0" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.1" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12855,7 +12898,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       payload: {
         ...common(config, metadata, "Shot Event", "shot_event"),
         state_topic: `${config.topicPrefix}/event/shot`,
-        event_types: ["state", "decision", "terminal"],
+        event_types: SHOT_EVENT_TYPES,
         icon: "mdi:coffee-maker"
       }
     });
@@ -12865,6 +12908,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
   // src/main.js
   var PLUGIN_ID = "mqtt.reaplugin";
   function createPlugin(host) {
+    const mapShotEvent = createShotEventMapper();
     const log = (message) => {
       try {
         host.log(`[mqtt] ${message}`);
@@ -12957,7 +13001,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     }
     function queueTelemetryPublish(rawState) {
       const intervalMs = telemetryPublishIntervalMs(rawState);
-      if (!bridge || intervalMs === null || telemetryPublishTimer) return;
+      if (!bridge || !runtime.machineConnected || intervalMs === null || telemetryPublishTimer) return;
       const delay = Math.max(0, intervalMs - (Date.now() - lastPublishedAt));
       telemetryPublishTimer = setTimeout(() => {
         telemetryPublishTimer = null;
@@ -13039,16 +13083,9 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       storage.write(DISCOVERY_TOPICS_KEY, runtime.previousDiscoveryTopics);
       log(config.haAutoDiscoveryEnable ? `published ${messages.length} Home Assistant discovery entities` : "Home Assistant discovery disabled; retained entities retracted");
     }
-    function publishShotEvent(frame) {
+    function publishShotEvent(event) {
       if (!bridge?.connected || !config.haAutoDiscoveryEnable) return;
-      bridge.publish(`${config.topicPrefix}/event/shot`, {
-        event_type: frame.event,
-        shot_id: frame.shotId ?? null,
-        phase: frame.state,
-        source_timestamp: frame.timestamp,
-        scale_lost: Boolean(frame.scaleLost),
-        decision: frame.decision ?? null
-      }, { qos: 1, retain: false });
+      bridge.publish(`${config.topicPrefix}/event/shot`, event, { qos: 1, retain: false });
     }
     function applyDevices(devices) {
       const connected = devices.some((device2) => device2?.type === "machine" && device2?.state === "connected");
@@ -13152,13 +13189,14 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
           if (!Number.isFinite(levels?.currentLevel) || !Number.isFinite(levels?.refillLevel)) return;
           runtime.waterLevelMm = levels.currentLevel;
           runtime.refillLevelMm = levels.refillLevel;
-          enqueuePublish();
+          queueTelemetryPublish(runtime.lastState);
         }
       });
       addStream({
         path: "/ws/v1/machine/shotSettings",
         onJson: (settings) => {
           if (!settings || typeof settings !== "object") return;
+          if (JSON.stringify(settings) === JSON.stringify(runtime.shotSettings)) return;
           runtime.shotSettings = settings;
           enqueuePublish();
         }
@@ -13172,10 +13210,12 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
           if (!frame || typeof frame !== "object" || typeof frame.event !== "string") return;
           const decision = frame.decision;
           const stopReason = decision && ["stop", "abort", "terminal"].includes(decision.kind) ? decision.reason : runtime.shotState?.stopReason;
+          const changed = frame.state !== runtime.shotState?.state || frame.scaleLost !== runtime.shotState?.scaleLost || stopReason !== runtime.shotState?.stopReason;
           runtime.shotState = { ...frame, stopReason };
-          if (runtime.shotStreamFirstFrame) runtime.shotStreamFirstFrame = false;
-          else publishShotEvent(frame);
-          enqueuePublish();
+          const event = mapShotEvent(frame, runtime.shotStreamFirstFrame);
+          runtime.shotStreamFirstFrame = false;
+          if (event) publishShotEvent(event);
+          if (changed || event) enqueuePublish();
         }
       });
       addStream({

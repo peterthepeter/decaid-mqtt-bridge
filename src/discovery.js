@@ -1,10 +1,12 @@
+import { SHOT_EVENT_TYPES } from "./shot-events.js";
+
 export const DISCOVERY_TOPICS_KEY = "haDiscoveryTopics";
 
 const SENSOR_DEFINITIONS = [
   ["State", "state", "state", {}],
   ["Substate", "substate", "substate", {}],
-  ["Water Level", "water_level", "water_level_ml", { device_class: "volume_storage", state_class: "measurement", unit_of_measurement: "mL", icon: "mdi:water" }],
-  ["Water Level Height", "water_level_mm", "water_level_mm", { device_class: "distance", state_class: "measurement", unit_of_measurement: "mm", icon: "mdi:cup-water" }],
+  ["Water Level", "water_level", "water_level_ml", { device_class: "volume_storage", state_class: "measurement", unit_of_measurement: "mL", suggested_display_precision: 0, icon: "mdi:water" }],
+  ["Water Level Height", "water_level_mm", "water_level_mm", { device_class: "distance", state_class: "measurement", unit_of_measurement: "mm", suggested_display_precision: 1, icon: "mdi:cup-water" }],
   ["Refill Threshold", "refill_threshold", "refill_level_mm", { device_class: "distance", unit_of_measurement: "mm", icon: "mdi:water-alert" }],
   ["Head Temperature", "head_temp", "head_temperature", { device_class: "temperature", state_class: "measurement", unit_of_measurement: "°C" }],
   ["Mix Temperature", "mix_temp", "mix_temperature", { device_class: "temperature", state_class: "measurement", unit_of_measurement: "°C" }],
@@ -14,8 +16,8 @@ const SENSOR_DEFINITIONS = [
   ["Configured Group Temperature", "configured_group_temp", "configured_group_temperature", { device_class: "temperature", unit_of_measurement: "°C" }],
   ["Pressure", "pressure", "pressure", { device_class: "pressure", state_class: "measurement", unit_of_measurement: "bar" }],
   ["Target Pressure", "target_pressure", "target_pressure", { device_class: "pressure", state_class: "measurement", unit_of_measurement: "bar" }],
-  ["Flow", "flow", "flow", { state_class: "measurement", unit_of_measurement: "mL/s", icon: "mdi:water" }],
-  ["Target Flow", "target_flow", "target_flow", { state_class: "measurement", unit_of_measurement: "mL/s", icon: "mdi:water" }],
+  ["Flow", "flow", "flow", { state_class: "measurement", unit_of_measurement: "mL/s", suggested_display_precision: 2, icon: "mdi:water" }],
+  ["Target Flow", "target_flow", "target_flow", { state_class: "measurement", unit_of_measurement: "mL/s", suggested_display_precision: 2, icon: "mdi:water" }],
   ["Espresso Count", "espresso_count", "espresso_count", { state_class: "total_increasing", icon: "mdi:coffee" }],
   ["Steaming Count", "steaming_count", "steaming_count", { state_class: "total_increasing", icon: "mdi:weather-dust" }],
   ["Target Steam Temperature", "target_steam_temp", "target_steam_temperature", { device_class: "temperature", unit_of_measurement: "°C" }],
@@ -25,7 +27,7 @@ const SENSOR_DEFINITIONS = [
   ["Target Hot Water Duration", "target_hot_water_duration", "target_hot_water_duration_s", { device_class: "duration", unit_of_measurement: "s" }],
   ["Target Shot Volume", "target_shot_volume", "target_shot_volume_ml", { device_class: "volume", unit_of_measurement: "mL" }],
   ["Scale Weight", "scale_weight", "scale_weight_g", { device_class: "weight", state_class: "measurement", unit_of_measurement: "g", availability: "scale" }],
-  ["Scale Weight Flow", "scale_weight_flow", "scale_weight_flow_g_s", { state_class: "measurement", unit_of_measurement: "g/s", icon: "mdi:water", availability: "scale" }],
+  ["Scale Weight Flow", "scale_weight_flow", "scale_weight_flow_g_s", { state_class: "measurement", unit_of_measurement: "g/s", suggested_display_precision: 2, icon: "mdi:water", availability: "scale" }],
   ["Scale Battery", "scale_battery", "scale_battery_percent", { device_class: "battery", state_class: "measurement", unit_of_measurement: "%", availability: "scale" }],
   ["Scale Timer", "scale_timer", "scale_timer_ms", { device_class: "duration", unit_of_measurement: "ms", availability: "scale" }],
   ["Shot Phase", "shot_phase", "shot_phase", { icon: "mdi:coffee-maker" }],
@@ -85,7 +87,7 @@ function common(config, metadata, name, key, availabilityKind) {
     unique_id: entityId(config, key),
     availability: availability(config, availabilityKind),
     device: device(config, metadata),
-    origin: { name: "Decaid MQTT Plugin", sw_version: "0.2.0" },
+    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.1" },
   };
 }
 
@@ -154,7 +156,7 @@ export function buildDiscoveryMessages(config, metadata = {}, profileOptions = [
     payload: {
       ...common(config, metadata, "Shot Event", "shot_event"),
       state_topic: `${config.topicPrefix}/event/shot`,
-      event_types: ["state", "decision", "terminal"],
+      event_types: SHOT_EVENT_TYPES,
       icon: "mdi:coffee-maker",
     },
   });

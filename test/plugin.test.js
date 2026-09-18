@@ -8,6 +8,7 @@ import { CommandDispatcher } from "../src/dispatcher.js";
 import { createCommandHandler } from "../src/command-handler.js";
 import { createDecaidApi } from "../src/decaid-api.js";
 import { buildDiscoveryMessages } from "../src/discovery.js";
+import { readFileSync } from "node:fs";
 
 test("generateUniqueId returns 8 hex chars", () => {
   const id = generateUniqueId();
@@ -52,6 +53,34 @@ test("telemetry cadence follows machine activity while transitions stay separate
   assert.equal(telemetryPublishIntervalMs("schedIdle"), 5000);
   assert.equal(telemetryPublishIntervalMs("sleeping"), null);
   assert.equal(telemetryPublishIntervalMs("disconnected"), null);
+});
+
+test("heartbeat seconds override legacy milliseconds without changing old installations", () => {
+  for (const seconds of [undefined, null, ""]) {
+    const { config } = normalizeConfig({ HeartbeatSeconds: seconds, PublishIntervalMs: 90000, ClientId: "existing-client" }, "abc");
+    assert.equal(config.publishIntervalMs, 90000);
+    assert.equal(config.clientId, "existing-client");
+  }
+  assert.equal(normalizeConfig({ HeartbeatSeconds: 60, PublishIntervalMs: 1000 }, "abc").config.publishIntervalMs, 60000);
+  assert.equal(normalizeConfig({ HeartbeatSeconds: "90" }, "abc").config.publishIntervalMs, 90000);
+  assert.equal(normalizeConfig({ HeartbeatSeconds: 1 }, "abc").config.publishIntervalMs, 1000);
+  for (const seconds of [0, -1, 0.5, "invalid", Infinity]) {
+    const { config, warnings } = normalizeConfig({ HeartbeatSeconds: seconds }, "abc");
+    assert.equal(config.publishIntervalMs, 60000);
+    assert.equal(warnings.length, 1);
+  }
+});
+
+test("tablet settings put normal setup first and preserve compatibility fields", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../mqtt.reaplugin/manifest.json", import.meta.url), "utf8"));
+  const keys = Object.keys(manifest.settings);
+  assert.deepEqual(keys.slice(0, 8), ["Host", "Port", "EnableTls", "Username", "Password", "HaAutoDiscoveryEnable", "HaDeviceName", "HeartbeatSeconds"]);
+  for (const key of keys.slice(8)) assert.ok(manifest.settings[key].label.startsWith("Advanced:"));
+  assert.equal(manifest.settings.Password.secure, true);
+  // No UI default masks a previously saved millisecond interval.
+  assert.equal(manifest.settings.HeartbeatSeconds.default, undefined);
+  assert.ok(manifest.settings.ClientId);
+  assert.ok(manifest.settings.PublishIntervalMs);
 });
 
 test("state map covers every entry exactly once", () => {
@@ -410,11 +439,21 @@ test("Home Assistant discovery groups stable entities under one device", () => {
   assert.equal(head.payload.state_topic, "de1plus/abcd1234/state");
   assert.deepEqual(head.payload.device.identifiers, ["abcd1234"]);
   assert.equal(head.payload.device.model, "DE1PRO");
+  for (const [key, precision] of [["water_level", 0], ["water_level_mm", 1]]) {
+    const sensor = messages.find((message) => message.payload.unique_id === `de1plus_abcd1234_${key}`);
+    assert.equal(sensor.payload.suggested_display_precision, precision);
+  }
+  for (const key of ["flow", "target_flow", "scale_weight_flow"]) {
+    const sensor = messages.find((message) => message.payload.unique_id === `de1plus_abcd1234_${key}`);
+    assert.equal(sensor.payload.suggested_display_precision, 2);
+    // Presentation precision must not round the underlying measurement.
+    assert.ok(!sensor.payload.value_template.includes("round"));
+  }
   const profile = messages.find((message) => message.payload.unique_id.endsWith("profile_select"));
   assert.deepEqual(profile.payload.options, ["Medium", "Ristretto"]);
   const event = messages.find((message) => message.payload.unique_id.endsWith("shot_event"));
   assert.equal(event.payload.state_topic, "de1plus/abcd1234/event/shot");
-  assert.deepEqual(event.payload.event_types, ["state", "decision", "terminal"]);
+  assert.deepEqual(event.payload.event_types, ["Bezug gestartet", "Bezug beendet", "Bezug abgebrochen"]);
 });
 
 test("decaid api returns parsed json and logs failures on non-quiet endpoints", async () => {

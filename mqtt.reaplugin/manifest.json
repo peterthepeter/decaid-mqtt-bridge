@@ -3,7 +3,7 @@
   "author": "peterthepeter; based on work by meldavy",
   "name": "Decaid MQTT Bridge",
   "description": "Publish complete Decaid telemetry and controls to MQTT with optional Home Assistant auto-discovery.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "apiVersion": 1,
   "permissions": [
     "log",
@@ -20,14 +20,20 @@
   "settings": {
     "Host": {
       "type": "string",
-      "label": "Broker host",
-      "description": "Hostname or IP of the MQTT broker. Empty disables the integration."
+      "label": "MQTT broker address",
+      "description": "Hostname or IP address, without mqtt:// or a port. Leave empty to disable the bridge."
     },
     "Port": {
       "type": "number",
       "label": "Broker port",
       "default": 8883,
       "description": "MQTT broker port. 8883 for TLS, 1883 for plain TCP."
+    },
+    "EnableTls": {
+      "type": "boolean",
+      "label": "Encrypted connection (TLS)",
+      "default": true,
+      "description": "Use TLS with certificate validation, normally on port 8883. Disable only for a trusted local broker using plain MQTT, normally on port 1883."
     },
     "Username": {
       "type": "string",
@@ -40,50 +46,48 @@
       "secure": true,
       "description": "Broker password (optional)."
     },
-    "ClientId": {
-      "type": "string",
-      "label": "Client ID",
-      "description": "MQTT client ID. Leave empty to use the auto-generated unique ID."
-    },
-    "TopicPrefix": {
-      "type": "string",
-      "label": "Topic prefix",
-      "description": "Prefix for state and command topics. Leave empty to use de1plus/<unique id>."
-    },
-    "PublishIntervalMs": {
-      "type": "number",
-      "label": "Publish interval (ms)",
-      "default": 60000,
-      "description": "Idle heartbeat interval in milliseconds (minimum 1000)."
-    },
-    "EnableTls": {
-      "type": "boolean",
-      "label": "Use TLS",
-      "default": true,
-      "description": "Connect to the broker over TLS."
-    },
     "HaAutoDiscoveryEnable": {
       "type": "boolean",
       "label": "Enable Home Assistant auto-discovery",
       "default": false,
       "description": "Publish retained Home Assistant discovery entities. Disable and save before changing brokers or uninstalling."
     },
+    "HaDeviceName": {
+      "type": "string",
+      "label": "Home Assistant device name (optional)",
+      "description": "Leave empty to use the connected machine model automatically."
+    },
+    "HeartbeatSeconds": {
+      "type": "number",
+      "label": "Status heartbeat (seconds)",
+      "description": "Recommended: 60 seconds. Leave empty to use 60 seconds or your existing legacy interval. Wake and connection changes are immediate; measurement updates follow machine activity automatically. Minimum: 1 second. Overrides the legacy interval below when set."
+    },
+    "TopicPrefix": {
+      "type": "string",
+      "label": "Advanced: MQTT topic prefix",
+      "description": "Normally leave unchanged. Empty uses de1plus/<unique id>. Changing this affects MQTT automations; disable discovery and save before changing it."
+    },
     "HaDiscoveryPrefix": {
       "type": "string",
-      "label": "Home Assistant discovery prefix",
+      "label": "Advanced: Home Assistant discovery prefix",
       "default": "homeassistant",
-      "description": "Must match the discovery prefix configured by Home Assistant."
+      "description": "Normally leave homeassistant unchanged. Must match Home Assistant's MQTT discovery prefix."
     },
     "HaEntityNamePrefix": {
       "type": "string",
-      "label": "Home Assistant entity name prefix",
+      "label": "Advanced: Home Assistant entity name prefix",
       "default": "DE1+ ",
-      "description": "Prefix shown before each discovered entity name."
+      "description": "Normally leave DE1+ unchanged. Optional prefix for entity display names, useful with multiple machines."
     },
-    "HaDeviceName": {
+    "ClientId": {
       "type": "string",
-      "label": "Home Assistant device name",
-      "description": "Leave empty to derive the device name from the connected machine model."
+      "label": "Advanced: MQTT client ID",
+      "description": "Normally leave empty for a stable, automatically generated ID. Kept for existing installations and brokers requiring a specific ID. Must be unique per client."
+    },
+    "PublishIntervalMs": {
+      "type": "number",
+      "label": "Advanced: legacy heartbeat (milliseconds)",
+      "description": "Compatibility setting for existing installations. Prefer Status heartbeat (seconds) above. Used only when that field is empty; leave both empty for 60 seconds. Minimum: 1000 ms."
     }
   }
 }

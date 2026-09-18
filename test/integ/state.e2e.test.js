@@ -119,6 +119,62 @@ test("water level stream maps mm to the de1app ml lookup table", async () => {
   assert.equal(doc.water_level_ml, 1104);
 });
 
+test("water measurements respect idle cadence and remain silent while sleeping", async () => {
+  await env.stop();
+  env = await startE2E({ settings: { PublishIntervalMs: 60000 } });
+  const { sim, broker, plugin } = env;
+  await waitFor(() => latestStateDoc(broker)?.online === true);
+  plugin.event("stateUpdate", machineSnapshot({ state: "idle" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Idle");
+  const before = statePublishCount(broker);
+  sim.sendWaterLevels({ currentLevel: 31.2890625, refillLevel: 5 });
+  await sleep(1200);
+  assert.equal(statePublishCount(broker), before);
+  await waitFor(() => latestStateDoc(broker)?.water_level_mm === 31.2890625, 6000);
+
+  plugin.event("stateUpdate", machineSnapshot({ state: "sleeping" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Sleep");
+  const asleep = statePublishCount(broker);
+  sim.sendWaterLevels({ currentLevel: 32.12345, refillLevel: 5 });
+  await sleep(1200);
+  assert.equal(statePublishCount(broker), asleep);
+  plugin.event("stateUpdate", machineSnapshot({ state: "idle" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Idle");
+  assert.equal(latestStateDoc(broker).water_level_mm, 32.12345);
+});
+
+test("sleeping and disconnected machines do not publish noisy or repeated stream frames", async () => {
+  await env.stop();
+  env = await startE2E({ settings: { PublishIntervalMs: 60000, HaAutoDiscoveryEnable: true } });
+  const { sim, broker, plugin } = env;
+  await waitFor(() => latestStateDoc(broker)?.online === true);
+  plugin.event("stateUpdate", machineSnapshot({ state: "sleeping" }));
+  await waitFor(() => latestStateDoc(broker)?.de1_connected === true);
+  sim.setScaleStatus("connected");
+  await waitFor(() => latestStateDoc(broker)?.scale_connected === true);
+  plugin.event("stateUpdate", machineSnapshot({ state: "sleeping" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Sleep");
+
+  async function noiseMustBeSilent() {
+    const before = broker.publishes.length;
+    for (let i = 0; i < 8; i++) {
+      sim.sendWaterLevels({ currentLevel: 31 + i / 100, refillLevel: 5 });
+      sim.queueScaleSnapshot({ weight: i / 100, batteryLevel: 90, flow: i / 10 });
+      sim.sendShotSettings({ ...sim.state.shotSettings });
+      sim.sendShotState({ ...sim.state.shotState, timestamp: new Date().toISOString() });
+      sim.sendDevices(sim.state.devices);
+      await sleep(100);
+    }
+    await sleep(500);
+    assert.equal(broker.publishes.length, before, "no state, discovery or shot event publishes expected");
+  }
+  await noiseMustBeSilent();
+  sim.sendDevices([]);
+  await waitFor(() => latestStateDoc(broker)?.de1_connected === false);
+  sim.state.devices = [];
+  await noiseMustBeSilent();
+});
+
 test("workflow REST poll sets profile and resolves the profile filename", async () => {
   const { sim, broker, plugin } = env;
   await waitFor(() => broker.publishes.some((p) => p.topic.endsWith("/state")));

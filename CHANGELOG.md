@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.1 — 2026-09-18
+
+- Fix water-level updates bypassing activity-aware telemetry cadence.
+- Suppress repeated shot settings and unchanged shot-state notifications;
+  prevent telemetry timers while the machine is disconnected.
+- Set Home Assistant display precision: flow sensors 2 decimals, water height
+  1 decimal, water volume whole millilitres. Raw measurements remain unchanged.
+- Replace technical shot event categories with lifecycle milestones:
+  `Bezug gestartet`, `Bezug beendet`, `Bezug abgebrochen`. Retain stop reason
+  and decision details, suppress intermediate phases and duplicate milestones.
+  **Migration:** update automations using the old `state`, `decision`, or
+  `terminal` event types.
+- Reorder tablet settings and label advanced options. Add heartbeat in seconds;
+  preserve legacy millisecond intervals and client IDs. An explicitly set
+  seconds value takes precedence; otherwise the legacy value or 60 s applies.
+- Add lifecycle, configuration compatibility, and sleeping/disconnected MQTT
+  silence regression tests. Platform TLS and extended hardware validation
+  remain pending.
+
 ## 0.2.0 — 2026-09-18
 
 Initial independent field-test release of Decaid MQTT Bridge.

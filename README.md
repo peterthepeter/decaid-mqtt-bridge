@@ -3,8 +3,9 @@
 An independent community project for Decaid and Home Assistant. Not affiliated
 with Decent Espresso or Home Assistant.
 
-Version 0.2.0 is an initial field-test release: automated tests pass, but
-validation on a real Decaid tablet and Home Assistant installation is still
+Version 0.2.1 is a field-test release. Basic MQTT and discovery operation have
+been observed on a real tablet and Home Assistant installation; automated tests
+cover the latest fixes. Extended hardware and platform TLS validation remain
 pending. See [CHANGELOG.md](CHANGELOG.md).
 
 MQTT integration for [Decaid](https://github.com/decentespresso/decaid) —
@@ -204,17 +205,24 @@ Configured in Decaid's plugin settings screen:
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
-| Broker host | *(empty)* | Empty disables the integration |
+| MQTT broker address | *(empty)* | Hostname/IP without scheme or port; empty disables the bridge |
 | Broker port | 8883 | 8883 for TLS, 1883 for plain TCP |
-| Username / Password | *(empty)* | Optional broker credentials |
-| Client ID | auto | `de1plus_<unique id>` when empty |
-| Topic prefix | auto | `de1plus/<unique id>` when empty |
-| Publish interval (ms) | 60000 | Idle heartbeat; mid-shot updates publish at ~1 s |
-| Use TLS | on | Platform certificate validation |
+| Encrypted connection (TLS) | on | Platform certificate validation; choose a matching port |
+| Username / Password | *(empty)* | Optional broker credentials; password stays secure |
 | Enable Home Assistant auto-discovery | off | Publish/remove retained HA entities |
-| Home Assistant discovery prefix | `homeassistant` | Must match HA's MQTT setting |
-| Home Assistant entity name prefix | `DE1+ ` | Prefix for entity display names |
-| Home Assistant device name | auto | Derived from the connected machine model |
+| Home Assistant device name (optional) | auto | Derived from the connected machine model |
+| Status heartbeat (seconds) | 60 effective | Empty uses the existing legacy interval, otherwise 60 s; wake/connection changes remain immediate |
+| Advanced: MQTT topic prefix | auto | Normally leave unchanged; `de1plus/<unique id>` when empty |
+| Advanced: Home Assistant discovery prefix | `homeassistant` | Normally unchanged; must match HA's MQTT setting |
+| Advanced: Home Assistant entity name prefix | `DE1+ ` | Optional prefix for entity display names |
+| Advanced: MQTT client ID | auto | Compatibility/custom broker requirements; `de1plus_<unique id>` when empty |
+| Advanced: legacy heartbeat (milliseconds) | *(empty)* | Preserves older installations; ignored when heartbeat seconds is set |
+
+Decaid renders one flat settings list, not collapsible groups. Advanced fields
+are therefore labeled and placed last. The seconds field intentionally has no
+prefilled UI default so an existing millisecond setting is not silently replaced.
+Enter `60` for the recommended heartbeat. Existing client IDs and millisecond
+intervals remain supported; automatic telemetry cadence needs no extra settings.
 
 After saving the broker settings, enable Home Assistant auto-discovery once.
 Home Assistant 2025.2 or newer then creates one device containing the sensors,
