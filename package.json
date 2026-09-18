@@ -1,0 +1,21 @@
+{
+  "name": "decaid-mqtt-plugin",
+  "version": "0.2.0",
+  "description": "MQTT integration plugin for Decaid with Home Assistant auto-discovery",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test \"test/*.test.js\"",
+    "test:integ": "node --test \"test/integ/**/*.test.js\"",
+    "check": "node --check mqtt.reaplugin/plugin.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "ws": "^8.21.3"
+  }
+}

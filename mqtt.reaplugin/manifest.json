@@ -1,0 +1,89 @@
+{
+  "id": "mqtt.reaplugin",
+  "author": "peterthepeter; based on work by meldavy",
+  "name": "Decaid MQTT Bridge",
+  "description": "Publish complete Decaid telemetry and controls to MQTT with optional Home Assistant auto-discovery.",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "permissions": [
+    "log",
+    "api",
+    "pluginStorage",
+    "events.machine",
+    "events.shots",
+    "network.tcp",
+    "network.tls",
+    "network.websocket"
+  ],
+  "drivers": [],
+  "api": [],
+  "settings": {
+    "Host": {
+      "type": "string",
+      "label": "Broker host",
+      "description": "Hostname or IP of the MQTT broker. Empty disables the integration."
+    },
+    "Port": {
+      "type": "number",
+      "label": "Broker port",
+      "default": 8883,
+      "description": "MQTT broker port. 8883 for TLS, 1883 for plain TCP."
+    },
+    "Username": {
+      "type": "string",
+      "label": "Username",
+      "description": "Broker username (optional)."
+    },
+    "Password": {
+      "type": "string",
+      "label": "Password",
+      "secure": true,
+      "description": "Broker password (optional)."
+    },
+    "ClientId": {
+      "type": "string",
+      "label": "Client ID",
+      "description": "MQTT client ID. Leave empty to use the auto-generated unique ID."
+    },
+    "TopicPrefix": {
+      "type": "string",
+      "label": "Topic prefix",
+      "description": "Prefix for state and command topics. Leave empty to use de1plus/<unique id>."
+    },
+    "PublishIntervalMs": {
+      "type": "number",
+      "label": "Publish interval (ms)",
+      "default": 60000,
+      "description": "Idle heartbeat interval in milliseconds (minimum 1000)."
+    },
+    "EnableTls": {
+      "type": "boolean",
+      "label": "Use TLS",
+      "default": true,
+      "description": "Connect to the broker over TLS."
+    },
+    "HaAutoDiscoveryEnable": {
+      "type": "boolean",
+      "label": "Enable Home Assistant auto-discovery",
+      "default": false,
+      "description": "Publish retained Home Assistant discovery entities. Disable and save before changing brokers or uninstalling."
+    },
+    "HaDiscoveryPrefix": {
+      "type": "string",
+      "label": "Home Assistant discovery prefix",
+      "default": "homeassistant",
+      "description": "Must match the discovery prefix configured by Home Assistant."
+    },
+    "HaEntityNamePrefix": {
+      "type": "string",
+      "label": "Home Assistant entity name prefix",
+      "default": "DE1+ ",
+      "description": "Prefix shown before each discovered entity name."
+    },
+    "HaDeviceName": {
+      "type": "string",
+      "label": "Home Assistant device name",
+      "description": "Leave empty to derive the device name from the connected machine model."
+    }
+  }
+}

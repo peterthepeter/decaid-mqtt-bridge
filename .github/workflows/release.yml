@@ -1,0 +1,72 @@
+name: Validate and release plugin
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify committed bundle is up to date
+        run: |
+          set -euo pipefail
+          cp mqtt.reaplugin/plugin.js /tmp/plugin.committed.js
+          npm run build
+          if ! cmp -s /tmp/plugin.committed.js mqtt.reaplugin/plugin.js; then
+            echo "mqtt.reaplugin/plugin.js is stale; run 'npm run build' and commit" >&2
+            exit 1
+          fi
+
+      - name: Validate plugin
+        run: |
+          set -euo pipefail
+          node --check mqtt.reaplugin/plugin.js
+          npm test
+          test -s mqtt.reaplugin/plugin.js
+          test -s mqtt.reaplugin/manifest.json
+          jq -e '.id == "mqtt.reaplugin"' mqtt.reaplugin/manifest.json >/dev/null
+          jq -e '.apiVersion == 1 and (.version | type == "string")' mqtt.reaplugin/manifest.json >/dev/null
+          grep -q 'function createPlugin' mqtt.reaplugin/plugin.js
+          test "$(jq -r '.version' mqtt.reaplugin/manifest.json)" = "$(node -p "require('./package.json').version")"
+          manifest_version="$(jq -r '.version' mqtt.reaplugin/manifest.json)"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && [[ "${GITHUB_REF_NAME#v}" != "$manifest_version" ]]; then
+            echo "tag $GITHUB_REF_NAME does not match plugin version $manifest_version" >&2
+            exit 1
+          fi
+
+      - name: Integration tests
+        run: npm run test:integ
+
+      - name: Create release archive
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          zip -r "mqtt.reaplugin-${GITHUB_REF_NAME}.zip" mqtt.reaplugin
+          unzip -l "mqtt.reaplugin-${GITHUB_REF_NAME}.zip" | grep -q 'mqtt.reaplugin/manifest.json'
+          unzip -l "mqtt.reaplugin-${GITHUB_REF_NAME}.zip" | grep -q 'mqtt.reaplugin/plugin.js'
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            "mqtt.reaplugin-${GITHUB_REF_NAME}.zip" --clobber

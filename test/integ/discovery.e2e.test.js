@@ -1,0 +1,91 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { startE2E, waitFor } from "./helpers/fixture.js";
+
+test("Home Assistant discovery publishes one retained device with stable entities", async () => {
+  const env = await startE2E({
+    settings: { HaAutoDiscoveryEnable: true },
+    seedStore: { uniqueId: "abc12345" },
+    simSetup: (sim) => {
+      sim.state.profiles = [
+        { id: "medium.json", profile: { title: "Medium" } },
+        { id: "lever.json", profile: { title: "Lever" } },
+      ];
+      sim.state.workflow.profile = { title: "Medium" };
+    },
+  });
+  try {
+    const discovery = await waitFor(() => {
+      const messages = env.broker.publishes.filter((p) => p.topic.startsWith("homeassistant/"));
+      return messages.length >= 40 ? messages : null;
+    });
+    assert.ok(discovery.every((message) => message.qos === 1 && message.retain === true));
+
+    const payloads = discovery.map((message) => JSON.parse(message.payload));
+    assert.ok(payloads.every((payload) => payload.device.identifiers[0] === "abc12345"));
+    assert.equal(new Set(payloads.map((payload) => payload.unique_id)).size, payloads.length);
+    assert.ok(discovery.some((message) => message.topic === "homeassistant/sensor/de1plus_abc12345_pressure/config"));
+
+    const profile = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_profile_select");
+    assert.deepEqual(profile.options, ["Medium", "Lever"]);
+    assert.equal(profile.command_template, "profile {{ value }}");
+  } finally {
+    await env.stop();
+  }
+});
+
+test("disabling discovery retracts all retained topics remembered from the previous run", async () => {
+  const oldTopics = [
+    "homeassistant/sensor/de1plus_abc12345_pressure/config",
+    "homeassistant/switch/de1plus_abc12345_switch/config",
+  ];
+  const env = await startE2E({
+    settings: { HaAutoDiscoveryEnable: false },
+    seedStore: { uniqueId: "abc12345", haDiscoveryTopics: oldTopics },
+  });
+  try {
+    await waitFor(() => oldTopics.every((topic) => env.broker.publishes.some(
+      (message) => message.topic === topic && message.payload === "" && message.retain === true,
+    )));
+    assert.deepEqual([...env.plugin.shim.store.get("haDiscoveryTopics")], []);
+  } finally {
+    await env.stop();
+  }
+});
+
+test("shot event discovery ignores the reconnect replay and publishes live events without retain", async () => {
+  const env = await startE2E({
+    settings: { HaAutoDiscoveryEnable: true },
+    seedStore: { uniqueId: "abc12345" },
+  });
+  try {
+    const eventTopic = "de1plus/abc12345/event/shot";
+    await waitFor(() => env.broker.publishes.some((p) => p.topic.includes("/event/") && p.topic.endsWith("/config")));
+    await waitFor(() => env.sim.shotStateConnectionCount() === 1);
+    assert.equal(env.broker.publishes.some((message) => message.topic === eventTopic), false);
+
+    env.sim.sendShotState({
+      event: "decision",
+      shotId: "shot-1",
+      state: "pouring",
+      timestamp: "2026-09-09T07:00:01.000Z",
+      scaleConnected: true,
+      scaleLost: false,
+      machineHasAutonomousSAW: false,
+      decision: { kind: "stop", reason: "target-weight" },
+    });
+    const message = await waitFor(() => env.broker.publishes.find((p) => p.topic === eventTopic));
+    assert.equal(message.qos, 1);
+    assert.equal(message.retain, false);
+    assert.deepEqual(JSON.parse(message.payload), {
+      event_type: "decision",
+      shot_id: "shot-1",
+      phase: "pouring",
+      source_timestamp: "2026-09-09T07:00:01.000Z",
+      scale_lost: false,
+      decision: { kind: "stop", reason: "target-weight" },
+    });
+  } finally {
+    await env.stop();
+  }
+});
