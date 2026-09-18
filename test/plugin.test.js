@@ -77,10 +77,10 @@ test("tablet settings put normal setup first and preserve compatibility fields",
   assert.deepEqual(keys.slice(0, 8), ["Host", "Port", "EnableTls", "Username", "Password", "HaAutoDiscoveryEnable", "HaDeviceName", "HeartbeatSeconds"]);
   for (const key of keys.slice(8)) assert.ok(manifest.settings[key].label.startsWith("Advanced:"));
   assert.equal(manifest.settings.Password.secure, true);
-  // No UI default masks a previously saved millisecond interval.
-  assert.equal(manifest.settings.HeartbeatSeconds.default, undefined);
+  assert.equal(manifest.settings.HeartbeatSeconds.default, 60);
+  assert.match(manifest.settings.HeartbeatSeconds.description, /brewing.*heating.*idle/);
   assert.ok(manifest.settings.ClientId);
-  assert.ok(manifest.settings.PublishIntervalMs);
+  assert.equal(manifest.settings.PublishIntervalMs, undefined);
 });
 
 test("state map covers every entry exactly once", () => {

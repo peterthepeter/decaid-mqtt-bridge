@@ -3,7 +3,7 @@
   "author": "peterthepeter; based on work by meldavy",
   "name": "Decaid MQTT Bridge",
   "description": "Publish complete Decaid telemetry and controls to MQTT with optional Home Assistant auto-discovery.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "apiVersion": 1,
   "permissions": [
     "log",
@@ -60,7 +60,8 @@
     "HeartbeatSeconds": {
       "type": "number",
       "label": "Status heartbeat (seconds)",
-      "description": "Recommended: 60 seconds. Leave empty to use 60 seconds or your existing legacy interval. Wake and connection changes are immediate; measurement updates follow machine activity automatically. Minimum: 1 second. Overrides the legacy interval below when set."
+      "default": 60,
+      "description": "Regular combined status message while sleeping or disconnected (tablet/Decaid still running). Default: 60 seconds. Wake and connection changes are immediate. Measurements update up to every 1 second during brewing, 2 seconds during heating, and 5 seconds while awake and idle. Minimum: 1 second."
     },
     "TopicPrefix": {
       "type": "string",
@@ -83,11 +84,6 @@
       "type": "string",
       "label": "Advanced: MQTT client ID",
       "description": "Normally leave empty for a stable, automatically generated ID. Kept for existing installations and brokers requiring a specific ID. Must be unique per client."
-    },
-    "PublishIntervalMs": {
-      "type": "number",
-      "label": "Advanced: legacy heartbeat (milliseconds)",
-      "description": "Compatibility setting for existing installations. Prefer Status heartbeat (seconds) above. Used only when that field is empty; leave both empty for 60 seconds. Minimum: 1000 ms."
     }
   }
 }

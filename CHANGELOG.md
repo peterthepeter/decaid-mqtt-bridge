@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — 2026-09-18
+
+- Remove the duplicate legacy millisecond heartbeat field from tablet settings.
+- Visibly default the single seconds heartbeat field to 60 and explain immediate
+  transitions plus automatic 1 s brewing, 2 s heating, and 5 s awake-idle updates.
+- On update, old millisecond-only settings reset to the recommended 60 seconds;
+  explicitly saved seconds values are unchanged.
+
 ## 0.2.1 — 2026-09-18
 
 - Fix water-level updates bypassing activity-aware telemetry cadence.
