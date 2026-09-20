@@ -443,12 +443,6 @@ var __mqttBundle = (() => {
   var SAFE_RESTING_STATES = /* @__PURE__ */ new Set(["idle", "schedIdle", "heating", "preheating", "sleeping"]);
   var STARTABLE_STATES = /* @__PURE__ */ new Set(["idle", "schedIdle", "heating", "preheating"]);
   var STOPPABLE_STATES = /* @__PURE__ */ new Set(["espresso", "steam", "hotWater", "flush", "steamRinse"]);
-  var START_STATE_BY_COMMAND = {
-    espresso_start: "espresso",
-    steam_start: "steam",
-    hot_water_start: "hotWater",
-    flush_start: "flush"
-  };
   var STEAM_STORE_PATH = "/api/v1/store/streamline-app/last-steam-temp";
   var MIN_STEAM_TEMPERATURE = 135;
   var CommandDispatcher = class {
@@ -481,11 +475,6 @@ var __mqttBundle = (() => {
           return this._setSteamHeater(true);
         case "steam_off":
           return this._setSteamHeater(false);
-        case "espresso_start":
-        case "steam_start":
-        case "hot_water_start":
-        case "flush_start":
-          return this._startOperation(parsed.kind);
         case "stop":
           return this._stopOperation();
         case "profile":
@@ -586,20 +575,6 @@ var __mqttBundle = (() => {
       if (updated.ok && enabled && state === "sleeping") return this._putState("idle");
       return updated;
     }
-    async _startOperation(command) {
-      const connectionError = this._connectionError();
-      if (connectionError) return connectionError;
-      const state = this._state();
-      if (!STARTABLE_STATES.has(state)) {
-        const reason = state === "sleeping" ? "machine sleeping; wake it before starting an operation" : `machine not ready (${state ?? "unknown"}); operation not started`;
-        return { ok: false, reason };
-      }
-      const presence = await this._request("POST", "/api/v1/machine/heartbeat");
-      if (!presence.ok) {
-        return { ok: false, reason: `presence heartbeat failed (${presence.status})` };
-      }
-      return this._putState(START_STATE_BY_COMMAND[command]);
-    }
     async _stopOperation() {
       const connectionError = this._connectionError();
       if (connectionError) return connectionError;
@@ -641,10 +616,6 @@ var __mqttBundle = (() => {
     "sleep",
     "steam_on",
     "steam_off",
-    "espresso_start",
-    "steam_start",
-    "hot_water_start",
-    "flush_start",
     "stop"
   ]);
   function parseCommand(text) {
@@ -12925,7 +12896,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.5" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.6" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12973,10 +12944,6 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       });
     }
     for (const [name2, key, payloadPress, icon] of [
-      ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
-      ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
-      ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
-      ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
       ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
     ]) {
       messages.push({

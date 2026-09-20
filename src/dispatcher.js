@@ -3,12 +3,6 @@ import { DECAID_API_BASE } from "./decaid-api.js";
 const SAFE_RESTING_STATES = new Set(["idle", "schedIdle", "heating", "preheating", "sleeping"]);
 const STARTABLE_STATES = new Set(["idle", "schedIdle", "heating", "preheating"]);
 const STOPPABLE_STATES = new Set(["espresso", "steam", "hotWater", "flush", "steamRinse"]);
-const START_STATE_BY_COMMAND = {
-  espresso_start: "espresso",
-  steam_start: "steam",
-  hot_water_start: "hotWater",
-  flush_start: "flush",
-};
 const STEAM_STORE_PATH = "/api/v1/store/streamline-app/last-steam-temp";
 const MIN_STEAM_TEMPERATURE = 135;
 
@@ -37,10 +31,6 @@ export class CommandDispatcher {
       case "sleep": return this._sleep();
       case "steam_on": return this._setSteamHeater(true);
       case "steam_off": return this._setSteamHeater(false);
-      case "espresso_start":
-      case "steam_start":
-      case "hot_water_start":
-      case "flush_start": return this._startOperation(parsed.kind);
       case "stop": return this._stopOperation();
       case "profile": return this._selectProfileByTitle(parsed.argument);
       case "profile_filename": return this._selectProfileById(parsed.argument);
@@ -151,27 +141,6 @@ export class CommandDispatcher {
     const updated = await this._updateSteamTarget(targetSteamTemp);
     if (updated.ok && enabled && state === "sleeping") return this._putState("idle");
     return updated;
-  }
-
-  async _startOperation(command) {
-    const connectionError = this._connectionError();
-    if (connectionError) return connectionError;
-    const state = this._state();
-    if (!STARTABLE_STATES.has(state)) {
-      const reason = state === "sleeping"
-        ? "machine sleeping; wake it before starting an operation"
-        : `machine not ready (${state ?? "unknown"}); operation not started`;
-      return { ok: false, reason };
-    }
-    // Decaid enables firmware user-presence tracking. Without this heartbeat
-    // the machine can report an ordinary resting state through the mapped API
-    // while internally rejecting remote operation requests as userNotPresent.
-    // Decaid's device-write queue preserves heartbeat-before-state ordering.
-    const presence = await this._request("POST", "/api/v1/machine/heartbeat");
-    if (!presence.ok) {
-      return { ok: false, reason: `presence heartbeat failed (${presence.status})` };
-    }
-    return this._putState(START_STATE_BY_COMMAND[command]);
   }
 
   async _stopOperation() {

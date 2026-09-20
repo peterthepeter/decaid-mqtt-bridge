@@ -86,58 +86,26 @@ test("steam_off stops active steam and disables its heater setting", async () =>
   assert.equal(sim.state.store["streamline-app/last-steam-temp"], 145);
 });
 
-test("operation commands start from idle and stop active beverage operations", async () => {
+test("Stop ends active beverage operations", async () => {
   const { broker, sim, plugin } = env;
-  plugin.event("stateUpdate", machineSnapshot({ state: "idle", substate: "idle" }));
-  await waitFor(() => latestStateDoc(broker)?.state === "Idle");
-
-  for (const [command, state] of [
-    ["espresso_start", "espresso"],
-    ["steam_start", "steam"],
-    ["hot_water_start", "hotWater"],
-    ["flush_start", "flush"],
-  ]) {
-    await sendCommand(broker, command);
-    await waitFor(() => sim.requests.some((r) => r.method === "PUT" && r.path === `/api/v1/machine/state/${state}`));
-  }
-
-  const operationRequests = sim.requests.filter((request) =>
-    request.path === "/api/v1/machine/heartbeat"
-    || request.path.startsWith("/api/v1/machine/state/"));
-  for (const state of ["espresso", "steam", "hotWater", "flush"]) {
-    const stateIndex = operationRequests.findIndex((request) => request.path.endsWith(`/state/${state}`));
-    assert.ok(stateIndex > 0);
-    assert.equal(operationRequests[stateIndex - 1].path, "/api/v1/machine/heartbeat");
-  }
-
   plugin.event("stateUpdate", machineSnapshot({ state: "espresso", substate: "pouring" }));
   await waitFor(() => latestStateDoc(broker)?.state === "Espresso");
   await sendCommand(broker, "stop");
   await waitFor(() => sim.requests.some((r) => r.method === "PUT" && r.path === "/api/v1/machine/state/idle"));
 });
 
-test("operation commands reject sleeping, busy, unsafe, and disconnected states", async () => {
+test("removed remote-start commands are ignored and Stop rejects unsafe states", async () => {
   const { broker, sim, plugin } = env;
 
-  plugin.event("stateUpdate", machineSnapshot({ state: "sleeping" }));
-  await waitFor(() => latestStateDoc(broker)?.state === "Sleep");
+  plugin.event("stateUpdate", machineSnapshot({ state: "idle" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Idle");
   await sendCommand(broker, "espresso_start");
-  await plugin.waitForLog(/command espresso_start not applied: machine sleeping/);
-
-  plugin.event("stateUpdate", machineSnapshot({ state: "steam" }));
-  await waitFor(() => latestStateDoc(broker)?.state === "Steam");
-  await sendCommand(broker, "espresso_start");
-  await plugin.waitForLog(/command espresso_start not applied: machine not ready/);
+  await plugin.waitForLog(/ignoring unknown MQTT command: espresso_start/);
 
   plugin.event("stateUpdate", machineSnapshot({ state: "cleaning" }));
   await waitFor(() => latestStateDoc(broker)?.state === "Clean");
   await sendCommand(broker, "stop");
   await plugin.waitForLog(/command stop not applied: machine state cleaning is not safe/);
-
-  sim.sendDevices([{ type: "machine", state: "disconnected" }]);
-  await waitFor(() => latestStateDoc(broker)?.de1_connected === false);
-  await sendCommand(broker, "steam_start");
-  await plugin.waitForLog(/command steam_start not applied: machine disconnected/);
 
   assert.equal(sim.requests.some((r) => [
     "/api/v1/machine/state/espresso",

@@ -3,7 +3,7 @@
   "author": "peterthepeter; based on work by meldavy",
   "name": "Decaid MQTT Bridge",
   "description": "Publish complete Decaid telemetry and controls to MQTT with optional Home Assistant auto-discovery.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "apiVersion": 1,
   "permissions": [
     "log",

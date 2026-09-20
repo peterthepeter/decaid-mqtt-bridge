@@ -87,7 +87,7 @@ function common(config, metadata, name, key, availabilityKind) {
     unique_id: entityId(config, key),
     availability: availability(config, availabilityKind),
     device: device(config, metadata),
-    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.5" },
+    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.6" },
   };
 }
 
@@ -139,10 +139,6 @@ export function buildDiscoveryMessages(config, metadata = {}, profileOptions = [
   }
 
   for (const [name, key, payloadPress, icon] of [
-    ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
-    ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
-    ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
-    ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
     ["Stop", "stop", "stop", "mdi:stop-circle-outline"],
   ]) {
     messages.push({

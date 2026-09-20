@@ -123,26 +123,19 @@ being dropped.
 | `sleep` | Request `sleeping` only from a safe resting state |
 | `steam_on` | Restore Streamline's shared remembered steam target through `PUT /workflow` and wake if sleeping; never starts a steam operation |
 | `steam_off` | Set the steam target to 0; if actively steaming, request `idle` first |
-| `espresso_start` | Start the selected espresso profile from an awake resting state |
-| `steam_start` | Start steaming from an awake resting state |
-| `hot_water_start` | Start hot-water dispensing from an awake resting state |
-| `flush_start` | Start a group-head rinse from an awake resting state |
 | `stop` | Stop espresso, steam, hot water, or rinse; otherwise no-op/reject unsafe states |
 | `profile <title>` | Select an exact profile title, only from a safe resting state |
 | `profile_filename <id>` | Select an exact profile record ID/filename, only from a safe resting state |
 
 Safe resting states are `idle`, `schedIdle`, `heating`, `preheating`, and
-`sleeping`. Operations can start only from an awake resting state; sleeping
-machines must be woken explicitly first. The common stop command is limited to
+`sleeping`. The common stop command is limited to
 espresso, steam, hot water, rinse, and steam-rinse states, and will not interrupt
 cleaning, calibration, firmware updates, or unknown future states. All commands
 are rejected while the machine is disconnected. Profile and steam-setting
 changes are rejected during brewing, hot water, cleaning, or another active
-operation. Immediately before an operation start, the bridge calls
-`POST /api/v1/machine/heartbeat`; only after that succeeds does it request the
-new machine state. This preserves Decaid's device-write ordering and prevents
-firmware presence tracking from silently ignoring remote starts. Steam changes
-use Decaid's workflow API and its shared
+operation. Remote start commands are intentionally not part of the protocol:
+an active Group Head Controller requires physical confirmation even when Decaid
+accepts the requested state. Steam changes use Decaid's workflow API and its shared
 `streamline-app/last-steam-temp` value, with plugin storage as an offline
 fallback. Unknown commands and failed preconditions are logged and do nothing.
 

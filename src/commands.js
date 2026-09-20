@@ -3,10 +3,6 @@ const EXACT_COMMANDS = new Set([
   "sleep",
   "steam_on",
   "steam_off",
-  "espresso_start",
-  "steam_start",
-  "hot_water_start",
-  "flush_start",
   "stop",
 ]);
 

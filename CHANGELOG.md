@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.6 — 2026-09-20
+
+- Remove the non-functional Home Assistant buttons and MQTT commands for
+  starting espresso, steam, hot water, and rinse. An active Group Head
+  Controller requires physical confirmation even when Decaid acknowledges the
+  requested state.
+- Keep the working power, steam-heater, profile, and Stop controls.
+- Retract the four obsolete retained Home Assistant discovery topics when the
+  updated plugin reconnects.
+
 ## 0.2.5 — 2026-09-20
 
 - Restore the espresso, steam, hot-water, rinse, and stop buttons for

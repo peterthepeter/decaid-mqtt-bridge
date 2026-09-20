@@ -3,7 +3,7 @@
 An independent community project for Decaid and Home Assistant. Not affiliated
 with Decent Espresso or Home Assistant.
 
-Version 0.2.5 is a field-test release. Basic MQTT and discovery operation have
+Version 0.2.6 is a field-test release. Basic MQTT and discovery operation have
 been observed on a real tablet and Home Assistant installation; automated tests
 cover the latest fixes. Extended hardware and platform TLS validation remain
 pending. See [CHANGELOG.md](CHANGELOG.md).
@@ -28,7 +28,7 @@ Tracking: [decentespresso/decaid#681](https://github.com/decentespresso/decaid/i
   time during a shot; the final yield, shot id, start time and duration are
   reported after completion. (Additive fields beyond de1app parity.)
 - Subscribes to `{topic_prefix}/command` for `wake`, `sleep`, `steam_on`,
-  `steam_off`, guarded operation start/stop commands, `profile <name>`, and
+  `steam_off`, safe operation stop, `profile <name>`, and
   `profile_filename <file>`.
 - MQTT over raw TCP or TLS (matching de1app, not MQTT-over-WebSocket).
 - Auto-generated unique client ID and topic prefix so multiple machines never
@@ -152,10 +152,6 @@ Send plain-text UTF-8 payloads to `{topic_prefix}/command`
 | `wake` | Wake the machine |
 | `sleep` | Put the machine to sleep |
 | `steam_on` / `steam_off` | Toggle the steam heater through the same workflow setting and remembered target used by Streamline |
-| `espresso_start` | Signal user presence, then start an espresso using the selected profile |
-| `steam_start` | Signal user presence, then start steaming |
-| `hot_water_start` | Signal user presence, then start hot-water dispensing |
-| `flush_start` | Signal user presence, then start a group-head rinse |
 | `stop` | Stop espresso, steam, hot water, or rinse |
 | `profile <name>` | Select a profile by title, e.g. `profile Medium` |
 | `profile_filename <file>` | Select a profile by filename, e.g. `profile_filename medium.tcl` |
@@ -234,9 +230,10 @@ messages; use the recommended 60 seconds for quiet standby operation.
 After saving the broker settings, enable Home Assistant auto-discovery once.
 Home Assistant 2025.2 or newer then creates one device containing the sensors,
 binary sensors, power/steam switches, profile selector and shot event entity.
-The guarded operation buttons are available on both GHC and non-GHC machines.
-Start commands signal Decaid user presence before requesting the machine state,
-so firmware presence tracking cannot silently discard the operation.
+Home Assistant discovery intentionally exposes no remote-start buttons. On
+machines with an active Group Head Controller, Decaid can acknowledge a state
+request even though the firmware still requires physical confirmation. The
+working Stop button remains available and can stop an active beverage or rinse.
 Disable discovery and save before moving to another broker or uninstalling so
 the plugin can retract its retained discovery topics.
 

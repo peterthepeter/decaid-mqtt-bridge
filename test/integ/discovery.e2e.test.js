@@ -29,17 +29,17 @@ test("Home Assistant discovery publishes one retained device with stable entitie
     const profile = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_profile_select");
     assert.deepEqual(profile.options, ["Medium", "Lever"]);
     assert.equal(profile.command_template, "profile {{ value }}");
-    const operationButtons = payloads.filter((payload) => [
-      "espresso_start", "steam_start", "hot_water_start", "flush_start", "stop",
-    ].some((key) => payload.unique_id === `de1plus_abc12345_${key}`));
-    assert.equal(operationButtons.length, 5);
-    assert.ok(operationButtons.every((payload) => payload.command_topic === "de1plus/abc12345/command"));
+    const stopButton = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_stop");
+    assert.equal(stopButton.command_topic, "de1plus/abc12345/command");
+    for (const key of ["espresso_start", "steam_start", "hot_water_start", "flush_start"]) {
+      assert.equal(payloads.some((payload) => payload.unique_id === `de1plus_abc12345_${key}`), false);
+    }
   } finally {
     await env.stop();
   }
 });
 
-test("GHC machines publish guarded virtual operation buttons", async () => {
+test("GHC machines publish Stop but no remote-start buttons", async () => {
   const env = await startE2E({
     settings: { HaAutoDiscoveryEnable: true },
     seedStore: { uniqueId: "ghc12345" },
@@ -47,10 +47,32 @@ test("GHC machines publish guarded virtual operation buttons", async () => {
   });
   try {
     await waitFor(() => env.broker.publishes.some((p) => p.topic.endsWith("_steam_switch/config")));
-    const operationKeys = ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"];
-    assert.ok(operationKeys.every((key) => env.broker.publishes.some((message) =>
-      message.topic.endsWith(`_${key}/config`) && message.payload !== "",
+    assert.ok(env.broker.publishes.some((message) =>
+      message.topic.endsWith("_stop/config") && message.payload !== "",
+    ));
+    for (const key of ["espresso_start", "steam_start", "hot_water_start", "flush_start"]) {
+      assert.equal(env.broker.publishes.some((message) =>
+        message.topic.endsWith(`_${key}/config`) && message.payload !== "",
+      ), false);
+    }
+  } finally {
+    await env.stop();
+  }
+});
+
+test("updating retracts retained remote-start discovery topics", async () => {
+  const oldTopics = ["espresso_start", "steam_start", "hot_water_start", "flush_start"]
+    .map((key) => `homeassistant/button/de1plus_abc12345_${key}/config`);
+  const env = await startE2E({
+    settings: { HaAutoDiscoveryEnable: true },
+    seedStore: { uniqueId: "abc12345", haDiscoveryTopics: oldTopics },
+  });
+  try {
+    await waitFor(() => oldTopics.every((topic) => env.broker.publishes.some(
+      (message) => message.topic === topic && message.payload === "" && message.retain === true,
     )));
+    const remembered = env.plugin.shim.store.get("haDiscoveryTopics");
+    assert.ok(oldTopics.every((topic) => !remembered.includes(topic)));
   } finally {
     await env.stop();
   }
