@@ -101,6 +101,15 @@ test("operation commands start from idle and stop active beverage operations", a
     await waitFor(() => sim.requests.some((r) => r.method === "PUT" && r.path === `/api/v1/machine/state/${state}`));
   }
 
+  const operationRequests = sim.requests.filter((request) =>
+    request.path === "/api/v1/machine/heartbeat"
+    || request.path.startsWith("/api/v1/machine/state/"));
+  for (const state of ["espresso", "steam", "hotWater", "flush"]) {
+    const stateIndex = operationRequests.findIndex((request) => request.path.endsWith(`/state/${state}`));
+    assert.ok(stateIndex > 0);
+    assert.equal(operationRequests[stateIndex - 1].path, "/api/v1/machine/heartbeat");
+  }
+
   plugin.event("stateUpdate", machineSnapshot({ state: "espresso", substate: "pouring" }));
   await waitFor(() => latestStateDoc(broker)?.state === "Espresso");
   await sendCommand(broker, "stop");

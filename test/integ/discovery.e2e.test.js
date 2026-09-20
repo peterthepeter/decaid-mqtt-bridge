@@ -39,7 +39,7 @@ test("Home Assistant discovery publishes one retained device with stable entitie
   }
 });
 
-test("GHC machines do not publish unsupported virtual operation buttons", async () => {
+test("GHC machines publish guarded virtual operation buttons", async () => {
   const env = await startE2E({
     settings: { HaAutoDiscoveryEnable: true },
     seedStore: { uniqueId: "ghc12345" },
@@ -48,9 +48,9 @@ test("GHC machines do not publish unsupported virtual operation buttons", async 
   try {
     await waitFor(() => env.broker.publishes.some((p) => p.topic.endsWith("_steam_switch/config")));
     const operationKeys = ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"];
-    assert.equal(env.broker.publishes.some((message) => operationKeys.some(
-      (key) => message.topic.endsWith(`_${key}/config`) && message.payload !== "",
-    )), false);
+    assert.ok(operationKeys.every((key) => env.broker.publishes.some((message) =>
+      message.topic.endsWith(`_${key}/config`) && message.payload !== "",
+    )));
   } finally {
     await env.stop();
   }

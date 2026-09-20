@@ -169,6 +169,9 @@ export function createDecaidSim() {
     if (req.method === "GET" && url.pathname === "/api/v1/settings") return json(200, state.settings);
     if (req.method === "GET" && url.pathname === "/api/v1/machine/info") return json(200, state.machineInfo);
     if (req.method === "GET" && url.pathname === "/api/v1/devices") return json(200, state.devices);
+    if (req.method === "POST" && url.pathname === "/api/v1/machine/heartbeat") {
+      return json(200, { timeout: 1800 });
+    }
     const storeMatch = url.pathname.match(/^\/api\/v1\/store\/([^/]+)\/([^/]+)$/);
     if (req.method === "GET" && storeMatch) {
       const key = `${decodeURIComponent(storeMatch[1])}/${decodeURIComponent(storeMatch[2])}`;

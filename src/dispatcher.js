@@ -18,7 +18,6 @@ export class CommandDispatcher {
     currentStateProvider,
     machineConnectedProvider = () => true,
     workflowProvider = () => null,
-    remoteOperationsProvider = () => false,
     rememberedSteamTemperatureProvider = () => null,
     rememberSteamTemperature = () => {},
     workflowUpdated = () => {},
@@ -27,7 +26,6 @@ export class CommandDispatcher {
     this._currentStateProvider = currentStateProvider;
     this._machineConnectedProvider = machineConnectedProvider;
     this._workflowProvider = workflowProvider;
-    this._remoteOperationsProvider = remoteOperationsProvider;
     this._rememberedSteamTemperatureProvider = rememberedSteamTemperatureProvider;
     this._rememberSteamTemperature = rememberSteamTemperature;
     this._workflowUpdated = workflowUpdated;
@@ -158,9 +156,6 @@ export class CommandDispatcher {
   async _startOperation(command) {
     const connectionError = this._connectionError();
     if (connectionError) return connectionError;
-    if (!this._remoteOperationsProvider?.()) {
-      return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
-    }
     const state = this._state();
     if (!STARTABLE_STATES.has(state)) {
       const reason = state === "sleeping"
@@ -168,15 +163,20 @@ export class CommandDispatcher {
         : `machine not ready (${state ?? "unknown"}); operation not started`;
       return { ok: false, reason };
     }
+    // Decaid enables firmware user-presence tracking. Without this heartbeat
+    // the machine can report an ordinary resting state through the mapped API
+    // while internally rejecting remote operation requests as userNotPresent.
+    // Decaid's device-write queue preserves heartbeat-before-state ordering.
+    const presence = await this._request("POST", "/api/v1/machine/heartbeat");
+    if (!presence.ok) {
+      return { ok: false, reason: `presence heartbeat failed (${presence.status})` };
+    }
     return this._putState(START_STATE_BY_COMMAND[command]);
   }
 
   async _stopOperation() {
     const connectionError = this._connectionError();
     if (connectionError) return connectionError;
-    if (!this._remoteOperationsProvider?.()) {
-      return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
-    }
     const state = this._state();
     if (STARTABLE_STATES.has(state) || state === "sleeping") return { ok: true, noop: true };
     if (!STOPPABLE_STATES.has(state)) {

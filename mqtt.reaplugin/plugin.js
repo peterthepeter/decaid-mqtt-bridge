@@ -457,7 +457,6 @@ var __mqttBundle = (() => {
       currentStateProvider,
       machineConnectedProvider = () => true,
       workflowProvider = () => null,
-      remoteOperationsProvider = () => false,
       rememberedSteamTemperatureProvider = () => null,
       rememberSteamTemperature = () => {
       },
@@ -468,7 +467,6 @@ var __mqttBundle = (() => {
       this._currentStateProvider = currentStateProvider;
       this._machineConnectedProvider = machineConnectedProvider;
       this._workflowProvider = workflowProvider;
-      this._remoteOperationsProvider = remoteOperationsProvider;
       this._rememberedSteamTemperatureProvider = rememberedSteamTemperatureProvider;
       this._rememberSteamTemperature = rememberSteamTemperature;
       this._workflowUpdated = workflowUpdated;
@@ -591,22 +589,20 @@ var __mqttBundle = (() => {
     async _startOperation(command) {
       const connectionError = this._connectionError();
       if (connectionError) return connectionError;
-      if (!this._remoteOperationsProvider?.()) {
-        return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
-      }
       const state = this._state();
       if (!STARTABLE_STATES.has(state)) {
         const reason = state === "sleeping" ? "machine sleeping; wake it before starting an operation" : `machine not ready (${state ?? "unknown"}); operation not started`;
         return { ok: false, reason };
+      }
+      const presence = await this._request("POST", "/api/v1/machine/heartbeat");
+      if (!presence.ok) {
+        return { ok: false, reason: `presence heartbeat failed (${presence.status})` };
       }
       return this._putState(START_STATE_BY_COMMAND[command]);
     }
     async _stopOperation() {
       const connectionError = this._connectionError();
       if (connectionError) return connectionError;
-      if (!this._remoteOperationsProvider?.()) {
-        return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
-      }
       const state = this._state();
       if (STARTABLE_STATES.has(state) || state === "sleeping") return { ok: true, noop: true };
       if (!STOPPABLE_STATES.has(state)) {
@@ -12929,7 +12925,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.4" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.5" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12976,26 +12972,24 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         }
       });
     }
-    if (metadata.GHC === false) {
-      for (const [name2, key, payloadPress, icon] of [
-        ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
-        ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
-        ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
-        ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
-        ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
-      ]) {
-        messages.push({
-          topic: topicFor(config, "button", key),
-          payload: {
-            ...common(config, metadata, name2, key),
-            command_topic: `${config.topicPrefix}/command`,
-            payload_press: payloadPress,
-            qos: 1,
-            retain: false,
-            icon
-          }
-        });
-      }
+    for (const [name2, key, payloadPress, icon] of [
+      ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
+      ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
+      ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
+      ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
+      ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
+    ]) {
+      messages.push({
+        topic: topicFor(config, "button", key),
+        payload: {
+          ...common(config, metadata, name2, key),
+          command_topic: `${config.topicPrefix}/command`,
+          payload_press: payloadPress,
+          qos: 1,
+          retain: false,
+          icon
+        }
+      });
     }
     if (profileOptions.length > 0) {
       messages.push({
@@ -13360,7 +13354,6 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         currentStateProvider: () => runtime.lastState,
         machineConnectedProvider: () => runtime.machineConnected,
         workflowProvider: () => runtime.workflow,
-        remoteOperationsProvider: () => runtime.metadata?.GHC === false,
         rememberedSteamTemperatureProvider: () => runtime.rememberedSteamTemperature,
         rememberSteamTemperature: (temperature) => {
           runtime.rememberedSteamTemperature = Math.round(temperature);

@@ -374,7 +374,6 @@ export function createPlugin(host) {
       currentStateProvider: () => runtime.lastState,
       machineConnectedProvider: () => runtime.machineConnected,
       workflowProvider: () => runtime.workflow,
-      remoteOperationsProvider: () => runtime.metadata?.GHC === false,
       rememberedSteamTemperatureProvider: () => runtime.rememberedSteamTemperature,
       rememberSteamTemperature: (temperature) => {
         runtime.rememberedSteamTemperature = Math.round(temperature);

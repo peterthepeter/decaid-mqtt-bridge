@@ -369,6 +369,11 @@ test("steam_on still wakes a sleeping machine when the heater is already enabled
 test("dispatcher maps guarded start commands to Decaid machine states", async () => {
   const { fetchImpl, calls } = mockFetch([
     {
+      match: /\/api\/v1\/machine\/heartbeat$/,
+      method: "POST",
+      respond: () => ({ ok: true, status: 200 }),
+    },
+    {
       match: /\/api\/v1\/machine\/state\/(espresso|steam|hotWater|flush)$/,
       method: "PUT",
       respond: () => ({ ok: true, status: 200 }),
@@ -378,16 +383,19 @@ test("dispatcher maps guarded start commands to Decaid machine states", async ()
     fetchImpl,
     currentStateProvider: () => "idle",
     machineConnectedProvider: () => true,
-    remoteOperationsProvider: () => true,
   });
 
   for (const command of ["espresso_start", "steam_start", "hot_water_start", "flush_start"]) {
     assert.equal((await dispatcher.dispatch({ kind: command, argument: null })).ok, true);
   }
   assert.deepEqual(calls.map((call) => call.url), [
+    "http://localhost:8080/api/v1/machine/heartbeat",
     "http://localhost:8080/api/v1/machine/state/espresso",
+    "http://localhost:8080/api/v1/machine/heartbeat",
     "http://localhost:8080/api/v1/machine/state/steam",
+    "http://localhost:8080/api/v1/machine/heartbeat",
     "http://localhost:8080/api/v1/machine/state/hotWater",
+    "http://localhost:8080/api/v1/machine/heartbeat",
     "http://localhost:8080/api/v1/machine/state/flush",
   ]);
 });
@@ -404,7 +412,6 @@ test("dispatcher rejects operation starts unless the machine is connected, awake
       fetchImpl,
       currentStateProvider: () => state,
       machineConnectedProvider: () => connected,
-      remoteOperationsProvider: () => true,
     });
     const result = await dispatcher.dispatch({ kind: "espresso_start", argument: null });
     assert.equal(result.ok, false);
@@ -418,21 +425,21 @@ test("dispatcher stops only beverage and rinse operations", async () => {
     const { fetchImpl, calls } = mockFetch([
       { match: /\/state\/idle$/, method: "PUT", respond: () => ({ ok: true, status: 200 }) },
     ]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
     assert.equal((await dispatcher.dispatch({ kind: "stop", argument: null })).ok, true);
     assert.equal(calls[0].url, "http://localhost:8080/api/v1/machine/state/idle");
   }
 
   for (const state of ["idle", "sleeping"]) {
     const { fetchImpl, calls } = mockFetch([]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
     assert.deepEqual(await dispatcher.dispatch({ kind: "stop", argument: null }), { ok: true, noop: true });
     assert.equal(calls.length, 0);
   }
 
   for (const state of ["cleaning", "calibration", "fwUpgrade", "error", null]) {
     const { fetchImpl, calls } = mockFetch([]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
     const result = await dispatcher.dispatch({ kind: "stop", argument: null });
     assert.equal(result.ok, false);
     assert.match(result.reason, /not safe/);
@@ -440,17 +447,18 @@ test("dispatcher stops only beverage and rinse operations", async () => {
   }
 });
 
-test("dispatcher rejects operation controls on GHC machines", async () => {
-  const { fetchImpl, calls } = mockFetch([]);
+test("dispatcher rejects an operation when user presence cannot be signalled", async () => {
+  const { fetchImpl, calls } = mockFetch([
+    { match: /\/machine\/heartbeat$/, method: "POST", respond: () => ({ ok: false, status: 503 }) },
+  ]);
   const dispatcher = new CommandDispatcher({
     fetchImpl,
     currentStateProvider: () => "idle",
-    remoteOperationsProvider: () => false,
   });
   const result = await dispatcher.dispatch({ kind: "flush_start", argument: null });
   assert.equal(result.ok, false);
-  assert.match(result.reason, /GHC/);
-  assert.equal(calls.length, 0);
+  assert.match(result.reason, /heartbeat failed \(503\)/);
+  assert.equal(calls.length, 1);
 });
 
 test("profile command resolves by title then posts the profile", async () => {
@@ -601,7 +609,7 @@ test("Home Assistant discovery groups stable entities under one device", () => {
   assert.deepEqual(event.payload.event_types, ["Bezug gestartet", "Bezug beendet", "Bezug abgebrochen"]);
 });
 
-test("Home Assistant discovery omits virtual operation buttons for GHC machines", () => {
+test("Home Assistant discovery includes guarded operation buttons for GHC machines", () => {
   const config = {
     uniqueId: "abcd1234",
     topicPrefix: "de1plus/abcd1234",
@@ -611,7 +619,7 @@ test("Home Assistant discovery omits virtual operation buttons for GHC machines"
   };
   const messages = buildDiscoveryMessages(config, { model: "DE1XL", GHC: true }, []);
   for (const key of ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"]) {
-    assert.equal(messages.some((message) => message.payload.unique_id.endsWith(`_${key}`)), false);
+    assert.equal(messages.some((message) => message.payload.unique_id.endsWith(`_${key}`)), true);
   }
   assert.ok(messages.some((message) => message.payload.unique_id.endsWith("_steam_switch")));
 });

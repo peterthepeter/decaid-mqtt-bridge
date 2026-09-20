@@ -3,7 +3,7 @@
 An independent community project for Decaid and Home Assistant. Not affiliated
 with Decent Espresso or Home Assistant.
 
-Version 0.2.4 is a field-test release. Basic MQTT and discovery operation have
+Version 0.2.5 is a field-test release. Basic MQTT and discovery operation have
 been observed on a real tablet and Home Assistant installation; automated tests
 cover the latest fixes. Extended hardware and platform TLS validation remain
 pending. See [CHANGELOG.md](CHANGELOG.md).
@@ -152,11 +152,11 @@ Send plain-text UTF-8 payloads to `{topic_prefix}/command`
 | `wake` | Wake the machine |
 | `sleep` | Put the machine to sleep |
 | `steam_on` / `steam_off` | Toggle the steam heater through the same workflow setting and remembered target used by Streamline |
-| `espresso_start` | Start an espresso using the selected profile (non-GHC machines only) |
-| `steam_start` | Start steaming (non-GHC machines only) |
-| `hot_water_start` | Start hot-water dispensing (non-GHC machines only) |
-| `flush_start` | Start a group-head rinse (non-GHC machines only) |
-| `stop` | Stop espresso, steam, hot water, or rinse (non-GHC machines only) |
+| `espresso_start` | Signal user presence, then start an espresso using the selected profile |
+| `steam_start` | Signal user presence, then start steaming |
+| `hot_water_start` | Signal user presence, then start hot-water dispensing |
+| `flush_start` | Signal user presence, then start a group-head rinse |
+| `stop` | Stop espresso, steam, hot water, or rinse |
 | `profile <name>` | Select a profile by title, e.g. `profile Medium` |
 | `profile_filename <file>` | Select a profile by filename, e.g. `profile_filename medium.tcl` |
 
@@ -234,9 +234,9 @@ messages; use the recommended 60 seconds for quiet standby operation.
 After saving the broker settings, enable Home Assistant auto-discovery once.
 Home Assistant 2025.2 or newer then creates one device containing the sensors,
 binary sensors, power/steam switches, profile selector and shot event entity.
-The guarded operation buttons are added only for machines that explicitly
-report `GHC: false`; Streamline does not expose virtual operation controls on
-machines with a physical Group Head Controller.
+The guarded operation buttons are available on both GHC and non-GHC machines.
+Start commands signal Decaid user presence before requesting the machine state,
+so firmware presence tracking cannot silently discard the operation.
 Disable discovery and save before moving to another broker or uninstalling so
 the plugin can retract its retained discovery topics.
 

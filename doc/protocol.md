@@ -138,9 +138,11 @@ espresso, steam, hot water, rinse, and steam-rinse states, and will not interrup
 cleaning, calibration, firmware updates, or unknown future states. All commands
 are rejected while the machine is disconnected. Profile and steam-setting
 changes are rejected during brewing, hot water, cleaning, or another active
-operation. Start and stop commands are additionally available only when machine
-info explicitly reports `GHC: false`, matching Streamline's virtual controls.
-Steam changes use Decaid's workflow API and its shared
+operation. Immediately before an operation start, the bridge calls
+`POST /api/v1/machine/heartbeat`; only after that succeeds does it request the
+new machine state. This preserves Decaid's device-write ordering and prevents
+firmware presence tracking from silently ignoring remote starts. Steam changes
+use Decaid's workflow API and its shared
 `streamline-app/last-steam-temp` value, with plugin storage as an offline
 fallback. Unknown commands and failed preconditions are logged and do nothing.
 

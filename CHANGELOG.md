@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.5 — 2026-09-20
+
+- Restore the espresso, steam, hot-water, rinse, and stop buttons for
+  GHC-equipped machines.
+- Signal Decaid user presence immediately before every remote operation start.
+  This prevents DE1 firmware in its internally mapped `userNotPresent` substate
+  from acknowledging but ignoring the following state request.
+- Fail closed without sending a state request when the presence heartbeat is
+  rejected.
+
 ## 0.2.4 — 2026-09-20
 
 - Fix the steam-heater switch to use Decaid's authoritative workflow API and

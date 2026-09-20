@@ -70,9 +70,10 @@ Wake/sleep and profile selection never interrupt active operations. The steam
 switch changes the configured steam target rather than requesting the
 `steam` machine state, so turning the switch on cannot unexpectedly start the
 wand. It uses the authoritative workflow endpoint and Streamline's shared
-remembered steam-temperature key. Operation start/stop commands fail closed and
-their discovery entities are omitted unless machine info explicitly reports
-that no physical Group Head Controller is present.
+remembered steam-temperature key. Operation starts fail closed unless Decaid
+accepts a presence heartbeat first. Decaid queues that firmware presence write
+before the following state request, allowing guarded remote controls on both
+GHC and non-GHC machines.
 
 ## Discovery lifecycle
 
