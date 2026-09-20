@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.4 — 2026-09-20
+
+- Fix the steam-heater switch to use Decaid's authoritative workflow API and
+  the same shared remembered temperature as the Streamline tablet UI.
+- Detect the machine's Group Head Controller capability. Hide and reject the
+  virtual espresso, steam, hot-water, rinse, and stop controls on GHC-equipped
+  machines, matching Streamline; retain them for machines explicitly reporting
+  `GHC: false`.
+- Run the release workflow for pull requests, manual dispatches, and version
+  tags only, avoiding duplicate validation runs for a release pushed to `main`.
+
 ## 0.2.3 — 2026-09-20
 
 - Add guarded MQTT and Home Assistant button controls for starting espresso,

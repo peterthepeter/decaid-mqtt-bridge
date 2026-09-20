@@ -38,6 +38,10 @@ export function createDecaidApi({ fetchImpl, log }) {
     return getJson("/api/v1/devices", { quiet: true });
   }
 
+  async function fetchMachineInfo() {
+    return getJson("/api/v1/machine/info", { quiet: true });
+  }
+
   // These lists are paginated on newer Decaid builds ({items, total, ...}) and
   // a plain array on older ones. Read the lifetime figure out of either, and
   // say so when it is neither, rather than silently keeping a stale count.
@@ -60,6 +64,7 @@ export function createDecaidApi({ fetchImpl, log }) {
     fetchProfiles,
     fetchSettings,
     fetchDevices,
+    fetchMachineInfo,
     fetchCollectionCount,
   };
 }

@@ -62,14 +62,17 @@ not take MQTT or other telemetry offline.
 ## Commands
 
 Commands cross the plugin boundary through Decaid's loopback REST API. The
-dispatcher receives the latest raw machine state, shot-settings snapshot, and
-workflow snapshot as providers, then evaluates preconditions immediately
+dispatcher receives the latest raw machine state, workflow snapshot, and
+machine capabilities as providers, then evaluates preconditions immediately
 before each request.
 
 Wake/sleep and profile selection never interrupt active operations. The steam
 switch changes the configured steam target rather than requesting the
 `steam` machine state, so turning the switch on cannot unexpectedly start the
-wand. Complete shot settings are required and preserved in every update.
+wand. It uses the authoritative workflow endpoint and Streamline's shared
+remembered steam-temperature key. Operation start/stop commands fail closed and
+their discovery entities are omitted unless machine info explicitly reports
+that no physical Group Head Controller is present.
 
 ## Discovery lifecycle
 

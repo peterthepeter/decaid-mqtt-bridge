@@ -414,6 +414,9 @@ var __mqttBundle = (() => {
     async function fetchDevices() {
       return getJson("/api/v1/devices", { quiet: true });
     }
+    async function fetchMachineInfo() {
+      return getJson("/api/v1/machine/info", { quiet: true });
+    }
     function readCountFromResponse(payload, countKind) {
       if (Array.isArray(payload)) return payload.length;
       if (payload && typeof payload.total === "number") return payload.total;
@@ -431,6 +434,7 @@ var __mqttBundle = (() => {
       fetchProfiles,
       fetchSettings,
       fetchDevices,
+      fetchMachineInfo,
       fetchCollectionCount
     };
   }
@@ -445,29 +449,29 @@ var __mqttBundle = (() => {
     hot_water_start: "hotWater",
     flush_start: "flush"
   };
-  var REQUIRED_SHOT_SETTINGS = [
-    "steamSetting",
-    "targetSteamTemp",
-    "targetSteamDuration",
-    "targetHotWaterTemp",
-    "targetHotWaterVolume",
-    "targetHotWaterDuration",
-    "targetShotVolume",
-    "groupTemp"
-  ];
+  var STEAM_STORE_PATH = "/api/v1/store/streamline-app/last-steam-temp";
+  var MIN_STEAM_TEMPERATURE = 135;
   var CommandDispatcher = class {
     constructor({
       fetchImpl,
       currentStateProvider,
       machineConnectedProvider = () => true,
-      shotSettingsProvider = () => null,
-      workflowProvider = () => null
+      workflowProvider = () => null,
+      remoteOperationsProvider = () => false,
+      rememberedSteamTemperatureProvider = () => null,
+      rememberSteamTemperature = () => {
+      },
+      workflowUpdated = () => {
+      }
     }) {
       this._fetch = fetchImpl;
       this._currentStateProvider = currentStateProvider;
       this._machineConnectedProvider = machineConnectedProvider;
-      this._shotSettingsProvider = shotSettingsProvider;
       this._workflowProvider = workflowProvider;
+      this._remoteOperationsProvider = remoteOperationsProvider;
+      this._rememberedSteamTemperatureProvider = rememberedSteamTemperatureProvider;
+      this._rememberSteamTemperature = rememberSteamTemperature;
+      this._workflowUpdated = workflowUpdated;
     }
     async dispatch(parsed) {
       switch (parsed.kind) {
@@ -529,10 +533,26 @@ var __mqttBundle = (() => {
       if (state === "sleeping") return { ok: true, noop: true };
       return this._putState("sleeping");
     }
-    _validatedShotSettings() {
-      const settings = this._shotSettingsProvider?.();
-      if (!settings || REQUIRED_SHOT_SETTINGS.some((key) => !Number.isFinite(settings[key]))) return null;
-      return Object.fromEntries(REQUIRED_SHOT_SETTINGS.map((key) => [key, settings[key]]));
+    async _getJson(path) {
+      const response = await this._fetch(`${DECAID_API_BASE}${path}`);
+      if (!response.ok) return null;
+      return response.json();
+    }
+    async _currentWorkflow() {
+      return await this._getJson("/api/v1/workflow") ?? this._workflowProvider?.() ?? null;
+    }
+    async _rememberedSteamTemperature() {
+      const shared = await this._getJson(STEAM_STORE_PATH);
+      if (Number.isFinite(shared) && shared >= MIN_STEAM_TEMPERATURE) return Math.round(shared);
+      const local = this._rememberedSteamTemperatureProvider?.();
+      return Number.isFinite(local) && local >= MIN_STEAM_TEMPERATURE ? Math.round(local) : null;
+    }
+    async _updateSteamTarget(targetTemperature) {
+      const result = await this._request("PUT", "/api/v1/workflow", {
+        steamSettings: { targetTemperature }
+      });
+      if (result.ok) this._workflowUpdated?.({ steamSettings: { targetTemperature } });
+      return result;
     }
     async _setSteamHeater(enabled) {
       const connectionError = this._connectionError();
@@ -541,30 +561,39 @@ var __mqttBundle = (() => {
       if (!SAFE_RESTING_STATES.has(state) && !(state === "steam" && !enabled)) {
         return { ok: false, reason: `machine in use (${state ?? "unknown"}); steam setting unchanged` };
       }
-      const settings = this._validatedShotSettings();
-      if (!settings) return { ok: false, reason: "no fresh, valid shot settings" };
-      let targetSteamTemp = 0;
-      if (enabled) {
-        const configured = this._workflowProvider?.()?.steamSettings?.targetTemperature;
-        if (!Number.isFinite(configured) || configured < 135) {
-          return { ok: false, reason: "workflow has no valid steam temperature" };
-        }
-        targetSteamTemp = configured;
-      }
       if (!enabled && state === "steam") {
         const stopped = await this._putState("idle");
         if (!stopped.ok) return stopped;
       }
-      const updated = await this._request("POST", "/api/v1/machine/shotSettings", {
-        ...settings,
-        targetSteamTemp
-      });
+      const workflow = await this._currentWorkflow();
+      const currentTarget = workflow?.steamSettings?.targetTemperature;
+      let targetSteamTemp = 0;
+      if (enabled) {
+        if (Number.isFinite(currentTarget) && currentTarget >= MIN_STEAM_TEMPERATURE) {
+          return state === "sleeping" ? this._putState("idle") : { ok: true, noop: true };
+        }
+        targetSteamTemp = await this._rememberedSteamTemperature();
+        if (targetSteamTemp === null) {
+          return { ok: false, reason: "no remembered steam temperature in Decaid" };
+        }
+      } else {
+        if (Number.isFinite(currentTarget) && currentTarget >= MIN_STEAM_TEMPERATURE) {
+          this._rememberSteamTemperature(currentTarget);
+          await this._request("POST", STEAM_STORE_PATH, Math.round(currentTarget)).catch(() => null);
+        } else if (state !== "steam") {
+          return { ok: true, noop: true };
+        }
+      }
+      const updated = await this._updateSteamTarget(targetSteamTemp);
       if (updated.ok && enabled && state === "sleeping") return this._putState("idle");
       return updated;
     }
     async _startOperation(command) {
       const connectionError = this._connectionError();
       if (connectionError) return connectionError;
+      if (!this._remoteOperationsProvider?.()) {
+        return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
+      }
       const state = this._state();
       if (!STARTABLE_STATES.has(state)) {
         const reason = state === "sleeping" ? "machine sleeping; wake it before starting an operation" : `machine not ready (${state ?? "unknown"}); operation not started`;
@@ -575,6 +604,9 @@ var __mqttBundle = (() => {
     async _stopOperation() {
       const connectionError = this._connectionError();
       if (connectionError) return connectionError;
+      if (!this._remoteOperationsProvider?.()) {
+        return { ok: false, reason: "remote operation controls are unavailable on this GHC machine" };
+      }
       const state = this._state();
       if (STARTABLE_STATES.has(state) || state === "sleeping") return { ok: true, noop: true };
       if (!STOPPABLE_STATES.has(state)) {
@@ -12897,7 +12929,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.3" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.4" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12944,24 +12976,26 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         }
       });
     }
-    for (const [name2, key, payloadPress, icon] of [
-      ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
-      ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
-      ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
-      ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
-      ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
-    ]) {
-      messages.push({
-        topic: topicFor(config, "button", key),
-        payload: {
-          ...common(config, metadata, name2, key),
-          command_topic: `${config.topicPrefix}/command`,
-          payload_press: payloadPress,
-          qos: 1,
-          retain: false,
-          icon
-        }
-      });
+    if (metadata.GHC === false) {
+      for (const [name2, key, payloadPress, icon] of [
+        ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
+        ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
+        ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
+        ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
+        ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
+      ]) {
+        messages.push({
+          topic: topicFor(config, "button", key),
+          payload: {
+            ...common(config, metadata, name2, key),
+            command_topic: `${config.topicPrefix}/command`,
+            payload_press: payloadPress,
+            qos: 1,
+            retain: false,
+            icon
+          }
+        });
+      }
     }
     if (profileOptions.length > 0) {
       messages.push({
@@ -12993,6 +13027,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 
   // src/main.js
   var PLUGIN_ID = "mqtt.reaplugin";
+  var REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
   function createPlugin(host) {
     const mapShotEvent = createShotEventMapper();
     const log = (message) => {
@@ -13036,7 +13071,8 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       lastSubstate: null,
       lastPublishedStateJson: null,
       previousDiscoveryTopics: [],
-      discoverySignature: ""
+      discoverySignature: "",
+      rememberedSteamTemperature: null
     };
     function shotFields() {
       const active = runtime.shot?.active === true;
@@ -13122,11 +13158,12 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     }
     async function refreshStaticData({ refreshCounts = false, fullStatic = false } = {}) {
       const previousSignature = runtime.discoverySignature;
-      const [workflow, profiles, settings, devices] = await Promise.all([
+      const [workflow, profiles, settings, devices, machineInfo] = await Promise.all([
         api.fetchWorkflow(),
         fullStatic ? api.fetchProfiles() : null,
         fullStatic ? api.fetchSettings() : null,
-        fullStatic ? api.fetchDevices() : null
+        fullStatic ? api.fetchDevices() : null,
+        fullStatic ? api.fetchMachineInfo() : null
       ]);
       if (Array.isArray(profiles)) runtime.profiles = profiles;
       if (workflow) applyWorkflow(workflow);
@@ -13140,6 +13177,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       }
       if (settings) runtime.settings = settings;
       if (Array.isArray(devices)) applyDevices(devices);
+      if (machineInfo && typeof machineInfo === "object") runtime.metadata = machineInfo;
       if (refreshCounts) await refreshUsageCounts();
       runtime.discoverySignature = JSON.stringify({
         metadata: runtime.metadata,
@@ -13321,8 +13359,21 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         fetchImpl: fetch,
         currentStateProvider: () => runtime.lastState,
         machineConnectedProvider: () => runtime.machineConnected,
-        shotSettingsProvider: () => runtime.shotSettings,
-        workflowProvider: () => runtime.workflow
+        workflowProvider: () => runtime.workflow,
+        remoteOperationsProvider: () => runtime.metadata?.GHC === false,
+        rememberedSteamTemperatureProvider: () => runtime.rememberedSteamTemperature,
+        rememberSteamTemperature: (temperature) => {
+          runtime.rememberedSteamTemperature = Math.round(temperature);
+          storage.write(REMEMBERED_STEAM_TEMPERATURE_KEY, runtime.rememberedSteamTemperature);
+        },
+        workflowUpdated: (patch) => applyWorkflow({
+          ...runtime.workflow ?? {},
+          ...patch,
+          steamSettings: {
+            ...runtime.workflow?.steamSettings ?? {},
+            ...patch.steamSettings ?? {}
+          }
+        })
       });
       bridge = createMqttBridge({
         host,
@@ -13355,13 +13406,15 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     return {
       id: PLUGIN_ID,
       async onLoad(settings) {
-        const [storedUniqueId, storedDiscoveryTopics] = await Promise.all([
+        const [storedUniqueId, storedDiscoveryTopics, rememberedSteamTemperature] = await Promise.all([
           storage.read(UNIQUE_ID_KEY),
-          storage.read(DISCOVERY_TOPICS_KEY)
+          storage.read(DISCOVERY_TOPICS_KEY),
+          storage.read(REMEMBERED_STEAM_TEMPERATURE_KEY)
         ]);
         const { config: normalized, uniqueId, warnings } = normalizeConfig(settings, storedUniqueId);
         if (!storedUniqueId) storage.write(UNIQUE_ID_KEY, uniqueId || generateUniqueId());
         runtime.previousDiscoveryTopics = Array.isArray(storedDiscoveryTopics) ? storedDiscoveryTopics : [];
+        runtime.rememberedSteamTemperature = Number.isFinite(rememberedSteamTemperature) ? rememberedSteamTemperature : null;
         for (const warning of warnings) log(`config warning: ${warning}`);
         config = normalized;
         if (!config.enabled) {

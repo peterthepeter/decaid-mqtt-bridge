@@ -121,7 +121,7 @@ being dropped.
 |---|---|
 | `wake` | If sleeping, request Decaid state `idle`; otherwise no-op |
 | `sleep` | Request `sleeping` only from a safe resting state |
-| `steam_on` | Restore the workflow's configured steam target and wake if sleeping; never starts a steam operation |
+| `steam_on` | Restore Streamline's shared remembered steam target through `PUT /workflow` and wake if sleeping; never starts a steam operation |
 | `steam_off` | Set the steam target to 0; if actively steaming, request `idle` first |
 | `espresso_start` | Start the selected espresso profile from an awake resting state |
 | `steam_start` | Start steaming from an awake resting state |
@@ -138,9 +138,11 @@ espresso, steam, hot water, rinse, and steam-rinse states, and will not interrup
 cleaning, calibration, firmware updates, or unknown future states. All commands
 are rejected while the machine is disconnected. Profile and steam-setting
 changes are rejected during brewing, hot water, cleaning, or another active
-operation. Steam changes require a fresh, complete `machine/shotSettings`
-snapshot; the complete settings object is posted back so unrelated values are
-preserved. Unknown commands and failed preconditions are logged and do nothing.
+operation. Start and stop commands are additionally available only when machine
+info explicitly reports `GHC: false`, matching Streamline's virtual controls.
+Steam changes use Decaid's workflow API and its shared
+`streamline-app/last-steam-temp` value, with plugin storage as an offline
+fallback. Unknown commands and failed preconditions are logged and do nothing.
 
 ## Home Assistant discovery
 

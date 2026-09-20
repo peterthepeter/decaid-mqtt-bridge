@@ -39,6 +39,23 @@ test("Home Assistant discovery publishes one retained device with stable entitie
   }
 });
 
+test("GHC machines do not publish unsupported virtual operation buttons", async () => {
+  const env = await startE2E({
+    settings: { HaAutoDiscoveryEnable: true },
+    seedStore: { uniqueId: "ghc12345" },
+    simSetup: (sim) => { sim.state.machineInfo.GHC = true; },
+  });
+  try {
+    await waitFor(() => env.broker.publishes.some((p) => p.topic.endsWith("_steam_switch/config")));
+    const operationKeys = ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"];
+    assert.equal(env.broker.publishes.some((message) => operationKeys.some(
+      (key) => message.topic.endsWith(`_${key}/config`) && message.payload !== "",
+    )), false);
+  } finally {
+    await env.stop();
+  }
+});
+
 test("disabling discovery retracts all retained topics remembered from the previous run", async () => {
   const oldTopics = [
     "homeassistant/sensor/de1plus_abc12345_pressure/config",

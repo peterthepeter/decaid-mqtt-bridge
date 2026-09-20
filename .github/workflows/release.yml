@@ -3,7 +3,6 @@ name: Validate and release plugin
 on:
   pull_request:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

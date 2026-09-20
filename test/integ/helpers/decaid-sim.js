@@ -13,7 +13,8 @@ export function createDecaidSim() {
       context: { targetDoseWeight: 18, targetYield: 36 },
     },
     settings: { chargingState: { batteryPercent: 77 } },
-    machineInfo: { model: "DE1XL", serialNumber: "TEST-123", version: "0.8.5" },
+    machineInfo: { model: "DE1XL", serialNumber: "TEST-123", version: "0.8.5", GHC: false },
+    store: { "streamline-app/last-steam-temp": 145 },
     devices: [{ type: "machine", state: "connected" }],
     shotSettings: {
       steamSetting: 0,
@@ -168,6 +169,16 @@ export function createDecaidSim() {
     if (req.method === "GET" && url.pathname === "/api/v1/settings") return json(200, state.settings);
     if (req.method === "GET" && url.pathname === "/api/v1/machine/info") return json(200, state.machineInfo);
     if (req.method === "GET" && url.pathname === "/api/v1/devices") return json(200, state.devices);
+    const storeMatch = url.pathname.match(/^\/api\/v1\/store\/([^/]+)\/([^/]+)$/);
+    if (req.method === "GET" && storeMatch) {
+      const key = `${decodeURIComponent(storeMatch[1])}/${decodeURIComponent(storeMatch[2])}`;
+      return Object.hasOwn(state.store, key) ? json(200, state.store[key]) : json(404, { error: "not found" });
+    }
+    if (req.method === "POST" && storeMatch) {
+      const key = `${decodeURIComponent(storeMatch[1])}/${decodeURIComponent(storeMatch[2])}`;
+      state.store[key] = raw ? JSON.parse(raw) : null;
+      return json(200, { ok: true });
+    }
     const shotMatch = url.pathname.match(/^\/api\/v1\/shots\/([^/]+)$/);
     if (req.method === "GET" && shotMatch) {
       const shot = state.shots.find((s) => s.id === decodeURIComponent(shotMatch[1]));
@@ -180,6 +191,22 @@ export function createDecaidSim() {
     }
     if (req.method === "POST" && url.pathname === "/api/v1/machine/profile") {
       record.profileBody = raw ? JSON.parse(raw) : null;
+      return json(200, { ok: true });
+    }
+    if (req.method === "PUT" && url.pathname === "/api/v1/workflow") {
+      record.workflowBody = raw ? JSON.parse(raw) : null;
+      state.workflow = {
+        ...state.workflow,
+        ...record.workflowBody,
+        steamSettings: {
+          ...state.workflow.steamSettings,
+          ...(record.workflowBody?.steamSettings ?? {}),
+        },
+      };
+      if (Number.isFinite(record.workflowBody?.steamSettings?.targetTemperature)) {
+        state.shotSettings.targetSteamTemp = record.workflowBody.steamSettings.targetTemperature;
+        sendShotSettings({ ...state.shotSettings });
+      }
       return json(200, { ok: true });
     }
     if (req.method === "POST" && url.pathname === "/api/v1/machine/shotSettings") {

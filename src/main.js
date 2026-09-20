@@ -11,6 +11,7 @@ import { buildDiscoveryMessages, DISCOVERY_TOPICS_KEY } from "./discovery.js";
 import { createShotEventMapper } from "./shot-events.js";
 
 export const PLUGIN_ID = "mqtt.reaplugin";
+const REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
 
 export function createPlugin(host) {
   const mapShotEvent = createShotEventMapper();
@@ -55,6 +56,7 @@ export function createPlugin(host) {
     lastPublishedStateJson: null,
     previousDiscoveryTopics: [],
     discoverySignature: "",
+    rememberedSteamTemperature: null,
   };
 
   function shotFields() {
@@ -154,11 +156,12 @@ export function createPlugin(host) {
 
   async function refreshStaticData({ refreshCounts = false, fullStatic = false } = {}) {
     const previousSignature = runtime.discoverySignature;
-    const [workflow, profiles, settings, devices] = await Promise.all([
+    const [workflow, profiles, settings, devices, machineInfo] = await Promise.all([
       api.fetchWorkflow(),
       fullStatic ? api.fetchProfiles() : null,
       fullStatic ? api.fetchSettings() : null,
       fullStatic ? api.fetchDevices() : null,
+      fullStatic ? api.fetchMachineInfo() : null,
     ]);
     if (Array.isArray(profiles)) runtime.profiles = profiles;
     if (workflow) applyWorkflow(workflow);
@@ -172,6 +175,7 @@ export function createPlugin(host) {
     }
     if (settings) runtime.settings = settings;
     if (Array.isArray(devices)) applyDevices(devices);
+    if (machineInfo && typeof machineInfo === "object") runtime.metadata = machineInfo;
     if (refreshCounts) await refreshUsageCounts();
     runtime.discoverySignature = JSON.stringify({
       metadata: runtime.metadata,
@@ -369,8 +373,21 @@ export function createPlugin(host) {
       fetchImpl: fetch,
       currentStateProvider: () => runtime.lastState,
       machineConnectedProvider: () => runtime.machineConnected,
-      shotSettingsProvider: () => runtime.shotSettings,
       workflowProvider: () => runtime.workflow,
+      remoteOperationsProvider: () => runtime.metadata?.GHC === false,
+      rememberedSteamTemperatureProvider: () => runtime.rememberedSteamTemperature,
+      rememberSteamTemperature: (temperature) => {
+        runtime.rememberedSteamTemperature = Math.round(temperature);
+        storage.write(REMEMBERED_STEAM_TEMPERATURE_KEY, runtime.rememberedSteamTemperature);
+      },
+      workflowUpdated: (patch) => applyWorkflow({
+        ...(runtime.workflow ?? {}),
+        ...patch,
+        steamSettings: {
+          ...(runtime.workflow?.steamSettings ?? {}),
+          ...(patch.steamSettings ?? {}),
+        },
+      }),
     });
     bridge = createMqttBridge({
       host,
@@ -404,13 +421,17 @@ export function createPlugin(host) {
   return {
     id: PLUGIN_ID,
     async onLoad(settings) {
-      const [storedUniqueId, storedDiscoveryTopics] = await Promise.all([
+      const [storedUniqueId, storedDiscoveryTopics, rememberedSteamTemperature] = await Promise.all([
         storage.read(UNIQUE_ID_KEY),
         storage.read(DISCOVERY_TOPICS_KEY),
+        storage.read(REMEMBERED_STEAM_TEMPERATURE_KEY),
       ]);
       const { config: normalized, uniqueId, warnings } = normalizeConfig(settings, storedUniqueId);
       if (!storedUniqueId) storage.write(UNIQUE_ID_KEY, uniqueId || generateUniqueId());
       runtime.previousDiscoveryTopics = Array.isArray(storedDiscoveryTopics) ? storedDiscoveryTopics : [];
+      runtime.rememberedSteamTemperature = Number.isFinite(rememberedSteamTemperature)
+        ? rememberedSteamTemperature
+        : null;
       for (const warning of warnings) log(`config warning: ${warning}`);
       config = normalized;
       if (!config.enabled) {

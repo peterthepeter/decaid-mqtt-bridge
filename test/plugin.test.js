@@ -289,8 +289,18 @@ test("dispatcher sleeps only from Idle", async () => {
 test("steam_on updates the heater setting and wakes without starting steam", async () => {
   const { fetchImpl, calls } = mockFetch([
     {
-      match: /\/machine\/shotSettings$/,
-      method: "POST",
+      match: /\/api\/v1\/workflow$/,
+      method: "GET",
+      respond: () => ({ ok: true, status: 200, json: async () => ({ steamSettings: { targetTemperature: 0 } }) }),
+    },
+    {
+      match: /\/store\/streamline-app\/last-steam-temp$/,
+      method: "GET",
+      respond: () => ({ ok: true, status: 200, json: async () => 145 }),
+    },
+    {
+      match: /\/api\/v1\/workflow$/,
+      method: "PUT",
       respond: () => ({ ok: true, status: 200 }),
     },
     {
@@ -302,28 +312,58 @@ test("steam_on updates the heater setting and wakes without starting steam", asy
   const dispatcher = new CommandDispatcher({
     fetchImpl,
     currentStateProvider: () => "sleeping",
-    shotSettingsProvider: () => ({
-      steamSetting: 0,
-      targetSteamTemp: 0,
-      targetSteamDuration: 30,
-      targetHotWaterTemp: 80,
-      targetHotWaterVolume: 100,
-      targetHotWaterDuration: 20,
-      targetShotVolume: 60,
-      groupTemp: 93,
-    }),
-    workflowProvider: () => ({ steamSettings: { targetTemperature: 145 } }),
   });
   const result = await dispatcher.dispatch({ kind: "steam_on", argument: null });
   assert.equal(result.ok, true);
   assert.deepEqual(
     calls.map((c) => c.url),
     [
-      "http://localhost:8080/api/v1/machine/shotSettings",
+      "http://localhost:8080/api/v1/workflow",
+      "http://localhost:8080/api/v1/store/streamline-app/last-steam-temp",
+      "http://localhost:8080/api/v1/workflow",
       "http://localhost:8080/api/v1/machine/state/idle",
     ],
   );
-  assert.equal(JSON.parse(calls[0].body).targetSteamTemp, 145);
+  assert.deepEqual(JSON.parse(calls[2].body), { steamSettings: { targetTemperature: 145 } });
+});
+
+test("steam_off remembers the enabled temperature and updates the workflow", async () => {
+  let remembered = null;
+  const { fetchImpl, calls } = mockFetch([
+    {
+      match: /\/api\/v1\/workflow$/,
+      method: "GET",
+      respond: () => ({ ok: true, status: 200, json: async () => ({ steamSettings: { targetTemperature: 150 } }) }),
+    },
+    { match: /\/store\/streamline-app\/last-steam-temp$/, method: "POST", respond: () => ({ ok: true, status: 200 }) },
+    { match: /\/api\/v1\/workflow$/, method: "PUT", respond: () => ({ ok: true, status: 200 }) },
+  ]);
+  const dispatcher = new CommandDispatcher({
+    fetchImpl,
+    currentStateProvider: () => "idle",
+    rememberSteamTemperature: (value) => { remembered = value; },
+  });
+  assert.equal((await dispatcher.dispatch({ kind: "steam_off", argument: null })).ok, true);
+  assert.equal(remembered, 150);
+  assert.equal(JSON.parse(calls[1].body), 150);
+  assert.deepEqual(JSON.parse(calls[2].body), { steamSettings: { targetTemperature: 0 } });
+});
+
+test("steam_on still wakes a sleeping machine when the heater is already enabled", async () => {
+  const { fetchImpl, calls } = mockFetch([
+    {
+      match: /\/api\/v1\/workflow$/,
+      method: "GET",
+      respond: () => ({ ok: true, status: 200, json: async () => ({ steamSettings: { targetTemperature: 145 } }) }),
+    },
+    { match: /\/state\/idle$/, method: "PUT", respond: () => ({ ok: true, status: 200 }) },
+  ]);
+  const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => "sleeping" });
+  assert.equal((await dispatcher.dispatch({ kind: "steam_on", argument: null })).ok, true);
+  assert.deepEqual(calls.map((call) => call.url), [
+    "http://localhost:8080/api/v1/workflow",
+    "http://localhost:8080/api/v1/machine/state/idle",
+  ]);
 });
 
 test("dispatcher maps guarded start commands to Decaid machine states", async () => {
@@ -338,6 +378,7 @@ test("dispatcher maps guarded start commands to Decaid machine states", async ()
     fetchImpl,
     currentStateProvider: () => "idle",
     machineConnectedProvider: () => true,
+    remoteOperationsProvider: () => true,
   });
 
   for (const command of ["espresso_start", "steam_start", "hot_water_start", "flush_start"]) {
@@ -363,6 +404,7 @@ test("dispatcher rejects operation starts unless the machine is connected, awake
       fetchImpl,
       currentStateProvider: () => state,
       machineConnectedProvider: () => connected,
+      remoteOperationsProvider: () => true,
     });
     const result = await dispatcher.dispatch({ kind: "espresso_start", argument: null });
     assert.equal(result.ok, false);
@@ -376,26 +418,39 @@ test("dispatcher stops only beverage and rinse operations", async () => {
     const { fetchImpl, calls } = mockFetch([
       { match: /\/state\/idle$/, method: "PUT", respond: () => ({ ok: true, status: 200 }) },
     ]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
     assert.equal((await dispatcher.dispatch({ kind: "stop", argument: null })).ok, true);
     assert.equal(calls[0].url, "http://localhost:8080/api/v1/machine/state/idle");
   }
 
   for (const state of ["idle", "sleeping"]) {
     const { fetchImpl, calls } = mockFetch([]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
     assert.deepEqual(await dispatcher.dispatch({ kind: "stop", argument: null }), { ok: true, noop: true });
     assert.equal(calls.length, 0);
   }
 
   for (const state of ["cleaning", "calibration", "fwUpgrade", "error", null]) {
     const { fetchImpl, calls } = mockFetch([]);
-    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state, remoteOperationsProvider: () => true });
     const result = await dispatcher.dispatch({ kind: "stop", argument: null });
     assert.equal(result.ok, false);
     assert.match(result.reason, /not safe/);
     assert.equal(calls.length, 0);
   }
+});
+
+test("dispatcher rejects operation controls on GHC machines", async () => {
+  const { fetchImpl, calls } = mockFetch([]);
+  const dispatcher = new CommandDispatcher({
+    fetchImpl,
+    currentStateProvider: () => "idle",
+    remoteOperationsProvider: () => false,
+  });
+  const result = await dispatcher.dispatch({ kind: "flush_start", argument: null });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /GHC/);
+  assert.equal(calls.length, 0);
 });
 
 test("profile command resolves by title then posts the profile", async () => {
@@ -506,6 +561,7 @@ test("Home Assistant discovery groups stable entities under one device", () => {
     model: "DE1PRO",
     serialNumber: "1234",
     version: "1352",
+    GHC: false,
   }, ["Medium", "Ristretto"]);
   assert.ok(messages.length >= 40);
   assert.equal(new Set(messages.map((message) => message.topic)).size, messages.length);
@@ -545,6 +601,21 @@ test("Home Assistant discovery groups stable entities under one device", () => {
   assert.deepEqual(event.payload.event_types, ["Bezug gestartet", "Bezug beendet", "Bezug abgebrochen"]);
 });
 
+test("Home Assistant discovery omits virtual operation buttons for GHC machines", () => {
+  const config = {
+    uniqueId: "abcd1234",
+    topicPrefix: "de1plus/abcd1234",
+    haDiscoveryPrefix: "homeassistant",
+    haEntityNamePrefix: "DE1+ ",
+    haDeviceName: "",
+  };
+  const messages = buildDiscoveryMessages(config, { model: "DE1XL", GHC: true }, []);
+  for (const key of ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"]) {
+    assert.equal(messages.some((message) => message.payload.unique_id.endsWith(`_${key}`)), false);
+  }
+  assert.ok(messages.some((message) => message.payload.unique_id.endsWith("_steam_switch")));
+});
+
 test("decaid api returns parsed json and logs failures on non-quiet endpoints", async () => {
   const logs = [];
   const { fetchImpl } = mockFetch([
@@ -566,6 +637,7 @@ test("decaid api quiet endpoints fail silently", async () => {
   const api = createDecaidApi({ fetchImpl, log: (m) => logs.push(m) });
   assert.equal(await api.fetchWorkflow(), null);
   assert.equal(await api.fetchProfiles(), null);
+  assert.equal(await api.fetchMachineInfo(), null);
   assert.equal(await api.fetchCollectionCount("/api/v1/shots?limit=1", "espresso"), null);
   assert.deepEqual(logs, []);
 });

@@ -1,6 +1,6 @@
 {
   "name": "decaid-mqtt-plugin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "MQTT integration plugin for Decaid with Home Assistant auto-discovery",
   "license": "MIT",
   "type": "module",

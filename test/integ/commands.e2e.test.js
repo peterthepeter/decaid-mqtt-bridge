@@ -56,6 +56,7 @@ test("sleep command only acts from Idle", async () => {
 
 test("steam_on enables the heater and wakes without starting a steam operation", async () => {
   const { broker, sim, plugin } = env;
+  sim.state.workflow.steamSettings.targetTemperature = 0;
   await waitFor(() => broker.publishes.some((p) => p.topic.endsWith("/state")));
   plugin.event("stateUpdate", machineSnapshot({ state: "sleeping", substate: "idle" }));
   await waitFor(() => latestStateDoc(broker)?.state === "Sleep"
@@ -63,24 +64,26 @@ test("steam_on enables the heater and wakes without starting a steam operation",
 
   await sendCommand(broker, "steam_on");
   await waitFor(() => {
-    return sim.requests.some((r) => r.method === "POST" && r.path === "/api/v1/machine/shotSettings")
+    return sim.requests.some((r) => r.method === "PUT" && r.path === "/api/v1/workflow")
       && sim.requests.some((r) => r.method === "PUT" && r.path === "/api/v1/machine/state/idle");
   });
-  const post = sim.requests.find((r) => r.method === "POST" && r.path === "/api/v1/machine/shotSettings");
-  assert.equal(JSON.parse(post.body).targetSteamTemp, 145);
+  const put = sim.requests.find((r) => r.method === "PUT" && r.path === "/api/v1/workflow");
+  assert.deepEqual(JSON.parse(put.body), { steamSettings: { targetTemperature: 145 } });
   assert.equal(sim.requests.some((r) => r.path === "/api/v1/machine/state/steam"), false);
 });
 
 test("steam_off stops active steam and disables its heater setting", async () => {
   const { broker, sim, plugin } = env;
+  sim.sendShotSettings({ ...sim.state.shotSettings, targetSteamTemp: 145 });
   plugin.event("stateUpdate", machineSnapshot({ state: "steam" }));
   await waitFor(() => latestStateDoc(broker)?.state === "Steam"
-    && latestStateDoc(broker)?.target_steam_temperature === 0);
+    && latestStateDoc(broker)?.target_steam_temperature === 145);
   await sendCommand(broker, "steam_off");
-  await waitFor(() => sim.requests.some((r) => r.method === "POST" && r.path === "/api/v1/machine/shotSettings"));
+  await waitFor(() => sim.requests.some((r) => r.method === "PUT" && r.path === "/api/v1/workflow"));
   assert.ok(sim.requests.some((r) => r.method === "PUT" && r.path === "/api/v1/machine/state/idle"));
-  const post = sim.requests.find((r) => r.method === "POST" && r.path === "/api/v1/machine/shotSettings");
-  assert.equal(JSON.parse(post.body).targetSteamTemp, 0);
+  const put = sim.requests.find((r) => r.method === "PUT" && r.path === "/api/v1/workflow");
+  assert.deepEqual(JSON.parse(put.body), { steamSettings: { targetTemperature: 0 } });
+  assert.equal(sim.state.store["streamline-app/last-steam-temp"], 145);
 });
 
 test("operation commands start from idle and stop active beverage operations", async () => {
