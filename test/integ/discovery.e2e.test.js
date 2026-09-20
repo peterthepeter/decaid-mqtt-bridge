@@ -29,6 +29,11 @@ test("Home Assistant discovery publishes one retained device with stable entitie
     const profile = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_profile_select");
     assert.deepEqual(profile.options, ["Medium", "Lever"]);
     assert.equal(profile.command_template, "profile {{ value }}");
+    const operationButtons = payloads.filter((payload) => [
+      "espresso_start", "steam_start", "hot_water_start", "flush_start", "stop",
+    ].some((key) => payload.unique_id === `de1plus_abc12345_${key}`));
+    assert.equal(operationButtons.length, 5);
+    assert.ok(operationButtons.every((payload) => payload.command_topic === "de1plus/abc12345/command"));
   } finally {
     await env.stop();
   }

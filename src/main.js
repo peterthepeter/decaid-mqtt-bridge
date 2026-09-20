@@ -368,6 +368,7 @@ export function createPlugin(host) {
     dispatcher = new CommandDispatcher({
       fetchImpl: fetch,
       currentStateProvider: () => runtime.lastState,
+      machineConnectedProvider: () => runtime.machineConnected,
       shotSettingsProvider: () => runtime.shotSettings,
       workflowProvider: () => runtime.workflow,
     });

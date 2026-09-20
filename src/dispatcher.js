@@ -1,15 +1,30 @@
 import { DECAID_API_BASE } from "./decaid-api.js";
 
 const SAFE_RESTING_STATES = new Set(["idle", "schedIdle", "heating", "preheating", "sleeping"]);
+const STARTABLE_STATES = new Set(["idle", "schedIdle", "heating", "preheating"]);
+const STOPPABLE_STATES = new Set(["espresso", "steam", "hotWater", "flush", "steamRinse"]);
+const START_STATE_BY_COMMAND = {
+  espresso_start: "espresso",
+  steam_start: "steam",
+  hot_water_start: "hotWater",
+  flush_start: "flush",
+};
 const REQUIRED_SHOT_SETTINGS = [
   "steamSetting", "targetSteamTemp", "targetSteamDuration", "targetHotWaterTemp",
   "targetHotWaterVolume", "targetHotWaterDuration", "targetShotVolume", "groupTemp",
 ];
 
 export class CommandDispatcher {
-  constructor({ fetchImpl, currentStateProvider, shotSettingsProvider = () => null, workflowProvider = () => null }) {
+  constructor({
+    fetchImpl,
+    currentStateProvider,
+    machineConnectedProvider = () => true,
+    shotSettingsProvider = () => null,
+    workflowProvider = () => null,
+  }) {
     this._fetch = fetchImpl;
     this._currentStateProvider = currentStateProvider;
+    this._machineConnectedProvider = machineConnectedProvider;
     this._shotSettingsProvider = shotSettingsProvider;
     this._workflowProvider = workflowProvider;
   }
@@ -20,6 +35,11 @@ export class CommandDispatcher {
       case "sleep": return this._sleep();
       case "steam_on": return this._setSteamHeater(true);
       case "steam_off": return this._setSteamHeater(false);
+      case "espresso_start":
+      case "steam_start":
+      case "hot_water_start":
+      case "flush_start": return this._startOperation(parsed.kind);
+      case "stop": return this._stopOperation();
       case "profile": return this._selectProfileByTitle(parsed.argument);
       case "profile_filename": return this._selectProfileById(parsed.argument);
       default: return { ok: false, reason: "unknown command" };
@@ -28,6 +48,10 @@ export class CommandDispatcher {
 
   _state() {
     return this._currentStateProvider?.() ?? null;
+  }
+
+  _connectionError() {
+    return this._machineConnectedProvider?.() ? null : { ok: false, reason: "machine disconnected" };
   }
 
   async _request(method, path, body) {
@@ -46,11 +70,15 @@ export class CommandDispatcher {
   }
 
   async _wake() {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
     if (this._state() !== "sleeping") return { ok: true, noop: true };
     return this._putState("idle");
   }
 
   async _sleep() {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
     const state = this._state();
     if (!SAFE_RESTING_STATES.has(state)) {
       return { ok: false, reason: `machine in use (${state ?? "unknown"}); not sleeping` };
@@ -66,6 +94,8 @@ export class CommandDispatcher {
   }
 
   async _setSteamHeater(enabled) {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
     const state = this._state();
     if (!SAFE_RESTING_STATES.has(state) && !(state === "steam" && !enabled)) {
       return { ok: false, reason: `machine in use (${state ?? "unknown"}); steam setting unchanged` };
@@ -94,6 +124,30 @@ export class CommandDispatcher {
     return updated;
   }
 
+  async _startOperation(command) {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
+    const state = this._state();
+    if (!STARTABLE_STATES.has(state)) {
+      const reason = state === "sleeping"
+        ? "machine sleeping; wake it before starting an operation"
+        : `machine not ready (${state ?? "unknown"}); operation not started`;
+      return { ok: false, reason };
+    }
+    return this._putState(START_STATE_BY_COMMAND[command]);
+  }
+
+  async _stopOperation() {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
+    const state = this._state();
+    if (STARTABLE_STATES.has(state) || state === "sleeping") return { ok: true, noop: true };
+    if (!STOPPABLE_STATES.has(state)) {
+      return { ok: false, reason: `machine state ${state ?? "unknown"} is not safe to stop remotely` };
+    }
+    return this._putState("idle");
+  }
+
   async _profiles() {
     const response = await this._fetch(`${DECAID_API_BASE}/api/v1/profiles`);
     if (!response.ok) return [];
@@ -110,6 +164,8 @@ export class CommandDispatcher {
   }
 
   async _selectProfile(predicate) {
+    const connectionError = this._connectionError();
+    if (connectionError) return connectionError;
     const state = this._state();
     if (!SAFE_RESTING_STATES.has(state)) {
       return { ok: false, reason: `machine in use (${state ?? "unknown"}); profile unchanged` };

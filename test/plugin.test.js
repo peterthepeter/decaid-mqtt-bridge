@@ -204,6 +204,9 @@ test("parseCommand handles the de1app grammar", () => {
   assert.deepEqual(parseCommand("  sleep "), { kind: "sleep", argument: null });
   assert.deepEqual(parseCommand("steam_on"), { kind: "steam_on", argument: null });
   assert.deepEqual(parseCommand("steam_off"), { kind: "steam_off", argument: null });
+  for (const command of ["espresso_start", "steam_start", "hot_water_start", "flush_start", "stop"]) {
+    assert.deepEqual(parseCommand(command), { kind: command, argument: null });
+  }
   assert.deepEqual(parseCommand("profile Ristretto"), { kind: "profile", argument: "Ristretto" });
   assert.deepEqual(parseCommand("profile My  Double  Name "), { kind: "profile", argument: "My  Double  Name " });
   assert.deepEqual(parseCommand("profile_filename long_black.tcl"), {
@@ -321,6 +324,78 @@ test("steam_on updates the heater setting and wakes without starting steam", asy
     ],
   );
   assert.equal(JSON.parse(calls[0].body).targetSteamTemp, 145);
+});
+
+test("dispatcher maps guarded start commands to Decaid machine states", async () => {
+  const { fetchImpl, calls } = mockFetch([
+    {
+      match: /\/api\/v1\/machine\/state\/(espresso|steam|hotWater|flush)$/,
+      method: "PUT",
+      respond: () => ({ ok: true, status: 200 }),
+    },
+  ]);
+  const dispatcher = new CommandDispatcher({
+    fetchImpl,
+    currentStateProvider: () => "idle",
+    machineConnectedProvider: () => true,
+  });
+
+  for (const command of ["espresso_start", "steam_start", "hot_water_start", "flush_start"]) {
+    assert.equal((await dispatcher.dispatch({ kind: command, argument: null })).ok, true);
+  }
+  assert.deepEqual(calls.map((call) => call.url), [
+    "http://localhost:8080/api/v1/machine/state/espresso",
+    "http://localhost:8080/api/v1/machine/state/steam",
+    "http://localhost:8080/api/v1/machine/state/hotWater",
+    "http://localhost:8080/api/v1/machine/state/flush",
+  ]);
+});
+
+test("dispatcher rejects operation starts unless the machine is connected, awake, and resting", async () => {
+  for (const [state, connected, reason] of [
+    ["sleeping", true, /wake it/],
+    ["espresso", true, /not ready/],
+    [null, true, /unknown/],
+    ["idle", false, /disconnected/],
+  ]) {
+    const { fetchImpl, calls } = mockFetch([]);
+    const dispatcher = new CommandDispatcher({
+      fetchImpl,
+      currentStateProvider: () => state,
+      machineConnectedProvider: () => connected,
+    });
+    const result = await dispatcher.dispatch({ kind: "espresso_start", argument: null });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, reason);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test("dispatcher stops only beverage and rinse operations", async () => {
+  for (const state of ["espresso", "steam", "hotWater", "flush", "steamRinse"]) {
+    const { fetchImpl, calls } = mockFetch([
+      { match: /\/state\/idle$/, method: "PUT", respond: () => ({ ok: true, status: 200 }) },
+    ]);
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    assert.equal((await dispatcher.dispatch({ kind: "stop", argument: null })).ok, true);
+    assert.equal(calls[0].url, "http://localhost:8080/api/v1/machine/state/idle");
+  }
+
+  for (const state of ["idle", "sleeping"]) {
+    const { fetchImpl, calls } = mockFetch([]);
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    assert.deepEqual(await dispatcher.dispatch({ kind: "stop", argument: null }), { ok: true, noop: true });
+    assert.equal(calls.length, 0);
+  }
+
+  for (const state of ["cleaning", "calibration", "fwUpgrade", "error", null]) {
+    const { fetchImpl, calls } = mockFetch([]);
+    const dispatcher = new CommandDispatcher({ fetchImpl, currentStateProvider: () => state });
+    const result = await dispatcher.dispatch({ kind: "stop", argument: null });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /not safe/);
+    assert.equal(calls.length, 0);
+  }
 });
 
 test("profile command resolves by title then posts the profile", async () => {
@@ -451,6 +526,20 @@ test("Home Assistant discovery groups stable entities under one device", () => {
   }
   const profile = messages.find((message) => message.payload.unique_id.endsWith("profile_select"));
   assert.deepEqual(profile.payload.options, ["Medium", "Ristretto"]);
+  for (const [key, payloadPress] of [
+    ["espresso_start", "espresso_start"],
+    ["steam_start", "steam_start"],
+    ["hot_water_start", "hot_water_start"],
+    ["flush_start", "flush_start"],
+    ["stop", "stop"],
+  ]) {
+    const button = messages.find((message) => message.payload.unique_id === `de1plus_abcd1234_${key}`);
+    assert.equal(button.topic, `homeassistant/button/de1plus_abcd1234_${key}/config`);
+    assert.equal(button.payload.command_topic, "de1plus/abcd1234/command");
+    assert.equal(button.payload.payload_press, payloadPress);
+    assert.equal(button.payload.qos, 1);
+    assert.equal(button.payload.retain, false);
+  }
   const event = messages.find((message) => message.payload.unique_id.endsWith("shot_event"));
   assert.equal(event.payload.state_topic, "de1plus/abcd1234/event/shot");
   assert.deepEqual(event.payload.event_types, ["Bezug gestartet", "Bezug beendet", "Bezug abgebrochen"]);

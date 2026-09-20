@@ -131,6 +131,28 @@ export function buildDiscoveryMessages(config, metadata = {}, profileOptions = [
         command_topic: `${config.topicPrefix}/command`,
         payload_on: payloadOn,
         payload_off: payloadOff,
+        qos: 1,
+        retain: false,
+        icon,
+      },
+    });
+  }
+
+  for (const [name, key, payloadPress, icon] of [
+    ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
+    ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
+    ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
+    ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
+    ["Stop", "stop", "stop", "mdi:stop-circle-outline"],
+  ]) {
+    messages.push({
+      topic: topicFor(config, "button", key),
+      payload: {
+        ...common(config, metadata, name, key),
+        command_topic: `${config.topicPrefix}/command`,
+        payload_press: payloadPress,
+        qos: 1,
+        retain: false,
         icon,
       },
     });
@@ -145,6 +167,8 @@ export function buildDiscoveryMessages(config, metadata = {}, profileOptions = [
         value_template: "{{ value_json.profile }}",
         command_topic: `${config.topicPrefix}/command`,
         command_template: "profile {{ value }}",
+        qos: 1,
+        retain: false,
         options: profileOptions,
         icon: "mdi:chart-bell-curve",
       },

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add guarded MQTT and Home Assistant button controls for starting espresso,
+  steam, hot water, and rinse operations, plus a shared stop action.
+- Reject operation starts while sleeping, disconnected, already in use, or in
+  an unknown state; restrict remote stop to beverage/rinse operations.
+
 ## 0.2.2 — 2026-09-18
 
 - Remove the duplicate legacy millisecond heartbeat field from tablet settings.

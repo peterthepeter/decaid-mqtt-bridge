@@ -123,15 +123,24 @@ being dropped.
 | `sleep` | Request `sleeping` only from a safe resting state |
 | `steam_on` | Restore the workflow's configured steam target and wake if sleeping; never starts a steam operation |
 | `steam_off` | Set the steam target to 0; if actively steaming, request `idle` first |
+| `espresso_start` | Start the selected espresso profile from an awake resting state |
+| `steam_start` | Start steaming from an awake resting state |
+| `hot_water_start` | Start hot-water dispensing from an awake resting state |
+| `flush_start` | Start a group-head rinse from an awake resting state |
+| `stop` | Stop espresso, steam, hot water, or rinse; otherwise no-op/reject unsafe states |
 | `profile <title>` | Select an exact profile title, only from a safe resting state |
 | `profile_filename <id>` | Select an exact profile record ID/filename, only from a safe resting state |
 
 Safe resting states are `idle`, `schedIdle`, `heating`, `preheating`, and
-`sleeping`. Profile and steam-setting changes are rejected during brewing,
-hot water, cleaning, or another active operation. Steam changes require a
-fresh, complete `machine/shotSettings` snapshot; the complete settings object
-is posted back so unrelated values are preserved. Unknown commands and failed
-preconditions are logged and do nothing.
+`sleeping`. Operations can start only from an awake resting state; sleeping
+machines must be woken explicitly first. The common stop command is limited to
+espresso, steam, hot water, rinse, and steam-rinse states, and will not interrupt
+cleaning, calibration, firmware updates, or unknown future states. All commands
+are rejected while the machine is disconnected. Profile and steam-setting
+changes are rejected during brewing, hot water, cleaning, or another active
+operation. Steam changes require a fresh, complete `machine/shotSettings`
+snapshot; the complete settings object is posted back so unrelated values are
+preserved. Unknown commands and failed preconditions are logged and do nothing.
 
 ## Home Assistant discovery
 
@@ -154,6 +163,7 @@ The discovery set contains:
   details;
 - connectivity, shot-active, and scale-loss binary sensors;
 - wake/sleep and steam-heater switches;
+- buttons to start espresso, steam, hot water, and rinse, plus a guarded common stop;
 - a profile select populated with available profile titles;
 - a shot event entity with milestones `Bezug gestartet`, `Bezug beendet`, and
   `Bezug abgebrochen`. Internal phase changes and advance decisions are suppressed.

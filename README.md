@@ -28,7 +28,8 @@ Tracking: [decentespresso/decaid#681](https://github.com/decentespresso/decaid/i
   time during a shot; the final yield, shot id, start time and duration are
   reported after completion. (Additive fields beyond de1app parity.)
 - Subscribes to `{topic_prefix}/command` for `wake`, `sleep`, `steam_on`,
-  `steam_off`, `profile <name>`, `profile_filename <file>`.
+  `steam_off`, guarded operation start/stop commands, `profile <name>`, and
+  `profile_filename <file>`.
 - MQTT over raw TCP or TLS (matching de1app, not MQTT-over-WebSocket).
 - Auto-generated unique client ID and topic prefix so multiple machines never
   collide on one broker.
@@ -151,6 +152,11 @@ Send plain-text UTF-8 payloads to `{topic_prefix}/command`
 | `wake` | Wake the machine |
 | `sleep` | Put the machine to sleep |
 | `steam_on` / `steam_off` | Toggle the steam heater |
+| `espresso_start` | Start an espresso using the selected profile |
+| `steam_start` | Start steaming |
+| `hot_water_start` | Start hot-water dispensing |
+| `flush_start` | Start a group-head rinse |
+| `stop` | Stop espresso, steam, hot water, or rinse |
 | `profile <name>` | Select a profile by title, e.g. `profile Medium` |
 | `profile_filename <file>` | Select a profile by filename, e.g. `profile_filename medium.tcl` |
 
@@ -227,7 +233,8 @@ messages; use the recommended 60 seconds for quiet standby operation.
 
 After saving the broker settings, enable Home Assistant auto-discovery once.
 Home Assistant 2025.2 or newer then creates one device containing the sensors,
-binary sensors, power/steam switches, profile selector and shot event entity.
+binary sensors, power/steam switches, guarded operation buttons, profile selector
+and shot event entity.
 Disable discovery and save before moving to another broker or uninstalling so
 the plugin can retract its retained discovery topics.
 

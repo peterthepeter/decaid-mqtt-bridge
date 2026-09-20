@@ -437,6 +437,14 @@ var __mqttBundle = (() => {
 
   // src/dispatcher.js
   var SAFE_RESTING_STATES = /* @__PURE__ */ new Set(["idle", "schedIdle", "heating", "preheating", "sleeping"]);
+  var STARTABLE_STATES = /* @__PURE__ */ new Set(["idle", "schedIdle", "heating", "preheating"]);
+  var STOPPABLE_STATES = /* @__PURE__ */ new Set(["espresso", "steam", "hotWater", "flush", "steamRinse"]);
+  var START_STATE_BY_COMMAND = {
+    espresso_start: "espresso",
+    steam_start: "steam",
+    hot_water_start: "hotWater",
+    flush_start: "flush"
+  };
   var REQUIRED_SHOT_SETTINGS = [
     "steamSetting",
     "targetSteamTemp",
@@ -448,9 +456,16 @@ var __mqttBundle = (() => {
     "groupTemp"
   ];
   var CommandDispatcher = class {
-    constructor({ fetchImpl, currentStateProvider, shotSettingsProvider = () => null, workflowProvider = () => null }) {
+    constructor({
+      fetchImpl,
+      currentStateProvider,
+      machineConnectedProvider = () => true,
+      shotSettingsProvider = () => null,
+      workflowProvider = () => null
+    }) {
       this._fetch = fetchImpl;
       this._currentStateProvider = currentStateProvider;
+      this._machineConnectedProvider = machineConnectedProvider;
       this._shotSettingsProvider = shotSettingsProvider;
       this._workflowProvider = workflowProvider;
     }
@@ -464,6 +479,13 @@ var __mqttBundle = (() => {
           return this._setSteamHeater(true);
         case "steam_off":
           return this._setSteamHeater(false);
+        case "espresso_start":
+        case "steam_start":
+        case "hot_water_start":
+        case "flush_start":
+          return this._startOperation(parsed.kind);
+        case "stop":
+          return this._stopOperation();
         case "profile":
           return this._selectProfileByTitle(parsed.argument);
         case "profile_filename":
@@ -474,6 +496,9 @@ var __mqttBundle = (() => {
     }
     _state() {
       return this._currentStateProvider?.() ?? null;
+    }
+    _connectionError() {
+      return this._machineConnectedProvider?.() ? null : { ok: false, reason: "machine disconnected" };
     }
     async _request(method, path, body) {
       const response = await this._fetch(`${DECAID_API_BASE}${path}`, {
@@ -489,10 +514,14 @@ var __mqttBundle = (() => {
       return this._request("PUT", `/api/v1/machine/state/${stateName}`);
     }
     async _wake() {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
       if (this._state() !== "sleeping") return { ok: true, noop: true };
       return this._putState("idle");
     }
     async _sleep() {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
       const state = this._state();
       if (!SAFE_RESTING_STATES.has(state)) {
         return { ok: false, reason: `machine in use (${state ?? "unknown"}); not sleeping` };
@@ -506,6 +535,8 @@ var __mqttBundle = (() => {
       return Object.fromEntries(REQUIRED_SHOT_SETTINGS.map((key) => [key, settings[key]]));
     }
     async _setSteamHeater(enabled) {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
       const state = this._state();
       if (!SAFE_RESTING_STATES.has(state) && !(state === "steam" && !enabled)) {
         return { ok: false, reason: `machine in use (${state ?? "unknown"}); steam setting unchanged` };
@@ -531,6 +562,26 @@ var __mqttBundle = (() => {
       if (updated.ok && enabled && state === "sleeping") return this._putState("idle");
       return updated;
     }
+    async _startOperation(command) {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
+      const state = this._state();
+      if (!STARTABLE_STATES.has(state)) {
+        const reason = state === "sleeping" ? "machine sleeping; wake it before starting an operation" : `machine not ready (${state ?? "unknown"}); operation not started`;
+        return { ok: false, reason };
+      }
+      return this._putState(START_STATE_BY_COMMAND[command]);
+    }
+    async _stopOperation() {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
+      const state = this._state();
+      if (STARTABLE_STATES.has(state) || state === "sleeping") return { ok: true, noop: true };
+      if (!STOPPABLE_STATES.has(state)) {
+        return { ok: false, reason: `machine state ${state ?? "unknown"} is not safe to stop remotely` };
+      }
+      return this._putState("idle");
+    }
     async _profiles() {
       const response = await this._fetch(`${DECAID_API_BASE}/api/v1/profiles`);
       if (!response.ok) return [];
@@ -544,6 +595,8 @@ var __mqttBundle = (() => {
       return this._selectProfile((record) => record.id === id || record.filename === id);
     }
     async _selectProfile(predicate) {
+      const connectionError = this._connectionError();
+      if (connectionError) return connectionError;
       const state = this._state();
       if (!SAFE_RESTING_STATES.has(state)) {
         return { ok: false, reason: `machine in use (${state ?? "unknown"}); profile unchanged` };
@@ -555,7 +608,17 @@ var __mqttBundle = (() => {
   };
 
   // src/commands.js
-  var EXACT_COMMANDS = /* @__PURE__ */ new Set(["wake", "sleep", "steam_on", "steam_off"]);
+  var EXACT_COMMANDS = /* @__PURE__ */ new Set([
+    "wake",
+    "sleep",
+    "steam_on",
+    "steam_off",
+    "espresso_start",
+    "steam_start",
+    "hot_water_start",
+    "flush_start",
+    "stop"
+  ]);
   function parseCommand(text) {
     if (typeof text !== "string") return null;
     const trimmed = text.trim();
@@ -12875,6 +12938,27 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
           command_topic: `${config.topicPrefix}/command`,
           payload_on: payloadOn,
           payload_off: payloadOff,
+          qos: 1,
+          retain: false,
+          icon
+        }
+      });
+    }
+    for (const [name2, key, payloadPress, icon] of [
+      ["Start Espresso", "espresso_start", "espresso_start", "mdi:coffee"],
+      ["Start Steam", "steam_start", "steam_start", "mdi:weather-dust"],
+      ["Start Hot Water", "hot_water_start", "hot_water_start", "mdi:cup-water"],
+      ["Start Rinse", "flush_start", "flush_start", "mdi:water-sync"],
+      ["Stop", "stop", "stop", "mdi:stop-circle-outline"]
+    ]) {
+      messages.push({
+        topic: topicFor(config, "button", key),
+        payload: {
+          ...common(config, metadata, name2, key),
+          command_topic: `${config.topicPrefix}/command`,
+          payload_press: payloadPress,
+          qos: 1,
+          retain: false,
           icon
         }
       });
@@ -12888,6 +12972,8 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
           value_template: "{{ value_json.profile }}",
           command_topic: `${config.topicPrefix}/command`,
           command_template: "profile {{ value }}",
+          qos: 1,
+          retain: false,
           options: profileOptions,
           icon: "mdi:chart-bell-curve"
         }
@@ -13234,6 +13320,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       dispatcher = new CommandDispatcher({
         fetchImpl: fetch,
         currentStateProvider: () => runtime.lastState,
+        machineConnectedProvider: () => runtime.machineConnected,
         shotSettingsProvider: () => runtime.shotSettings,
         workflowProvider: () => runtime.workflow
       });

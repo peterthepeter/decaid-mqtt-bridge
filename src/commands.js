@@ -1,4 +1,14 @@
-const EXACT_COMMANDS = new Set(["wake", "sleep", "steam_on", "steam_off"]);
+const EXACT_COMMANDS = new Set([
+  "wake",
+  "sleep",
+  "steam_on",
+  "steam_off",
+  "espresso_start",
+  "steam_start",
+  "hot_water_start",
+  "flush_start",
+  "stop",
+]);
 
 export function parseCommand(text) {
   if (typeof text !== "string") return null;
