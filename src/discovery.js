@@ -87,7 +87,7 @@ function common(config, metadata, name, key, availabilityKind) {
     unique_id: entityId(config, key),
     availability: availability(config, availabilityKind),
     device: device(config, metadata),
-    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.2" },
+    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.3" },
   };
 }
 

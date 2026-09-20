@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 — 2026-09-20
 
 - Add guarded MQTT and Home Assistant button controls for starting espresso,
   steam, hot water, and rinse operations, plus a shared stop action.

@@ -3,7 +3,7 @@
 An independent community project for Decaid and Home Assistant. Not affiliated
 with Decent Espresso or Home Assistant.
 
-Version 0.2.2 is a field-test release. Basic MQTT and discovery operation have
+Version 0.2.3 is a field-test release. Basic MQTT and discovery operation have
 been observed on a real tablet and Home Assistant installation; automated tests
 cover the latest fixes. Extended hardware and platform TLS validation remain
 pending. See [CHANGELOG.md](CHANGELOG.md).
