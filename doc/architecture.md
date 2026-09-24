@@ -24,6 +24,8 @@ The manifest requests `log`, `api`, `pluginStorage`, `events.machine`,
 `events.shots`, `network.tcp`, `network.tls`, and `network.websocket`.
 `events.workflow` is intentionally not requested because it is newer than the
 minimum supported Decaid release; workflow is read through loopback REST.
+Explicit empty `api` and `drivers` arrays are retained because Decaid's
+manifest parser requires list values for those fields.
 
 At runtime the plugin uses six transports, within Decaid's limit of eight:
 

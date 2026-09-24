@@ -160,7 +160,8 @@ The discovery set contains:
   details;
 - connectivity, shot-active, and scale-loss binary sensors;
 - wake/sleep and steam-heater switches;
-- buttons to start espresso, steam, hot water, and rinse, plus a guarded common stop;
+- a guarded common stop button; remote operation starts are intentionally not
+  exposed because Group Head Controller machines require physical confirmation;
 - a profile select populated with available profile titles;
 - a shot event entity with milestones `Bezug gestartet`, `Bezug beendet`, and
   `Bezug abgebrochen`. Internal phase changes and advance decisions are suppressed.
@@ -184,8 +185,11 @@ save once before uninstalling or moving the plugin to another broker.
 ## Settings keys
 
 The manifest exposes `Host`, `Port`, `Username`, `Password`, `ClientId`,
-`TopicPrefix`, `PublishIntervalMs`, `EnableTls`, `HaAutoDiscoveryEnable`,
+`TopicPrefix`, `HeartbeatSeconds`, `EnableTls`, `HaAutoDiscoveryEnable`,
 `HaDiscoveryPrefix`, `HaEntityNamePrefix`, and `HaDeviceName`.
+
+Older installations that still supply `PublishIntervalMs` remain compatible;
+an explicitly configured `HeartbeatSeconds` value takes precedence.
 
 An empty `Host` disables the plugin. Port must be 1–65535 and the publish
 interval must be at least 1000 ms; invalid values fall back to safe defaults

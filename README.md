@@ -1,341 +1,180 @@
 # Decaid MQTT Bridge
 
-An independent community project for Decaid and Home Assistant. Not affiliated
-with Decent Espresso or Home Assistant.
+MQTT bridge for [Decaid](https://github.com/decentespresso/decaid) with Home
+Assistant auto-discovery, extended telemetry, and safe machine controls.
 
-Version 0.2.6 is a field-test release. Basic MQTT and discovery operation have
-been observed on a real tablet and Home Assistant installation; automated tests
-cover the latest fixes. Extended hardware and platform TLS validation remain
-pending. See [CHANGELOG.md](CHANGELOG.md).
+The bridge publishes machine, scale, water, profile, and shot data to an MQTT
+broker. It is wire-compatible with the de1app MQTT plugin
+([simpkins/de1plus-mqtt](https://github.com/simpkins/de1plus-mqtt)), so existing
+Home Assistant, Node-RED, and custom MQTT consumers can keep using the same
+base message format.
 
-MQTT integration for [Decaid](https://github.com/decentespresso/decaid) —
-publishes machine state to an MQTT broker and accepts control commands.
-Wire-compatible with the de1app MQTT plugin
-([simpkins/de1plus-mqtt](https://github.com/simpkins/de1plus-mqtt)), so
-existing MQTT consumers (Home Assistant, Node-RED, custom scripts) keep
-working unchanged.
-
-Specs: [doc/protocol.md](doc/protocol.md) (wire contract),
-[doc/architecture.md](doc/architecture.md) (implementation design).
-Tracking: [decentespresso/decaid#681](https://github.com/decentespresso/decaid/issues/681).
+Version 0.2.6 has been tested on a real Decaid tablet and Home Assistant
+installation. Automated unit and integration tests cover the MQTT connection,
+state publishing, discovery, commands, reconnect behavior, and shot events.
 
 ## Features
 
-- Publishes machine state to `{topic_prefix}/state` (QoS 1, retained):
-  the de1app-compatible base fields plus Decaid temperatures, pressure/flow,
-  targets, scale, workflow, tablet, water, and shot telemetry.
-- Live shot weight: with a scale attached, `shot_weight_g` updates in real
-  time during a shot; the final yield, shot id, start time and duration are
-  reported after completion. (Additive fields beyond de1app parity.)
-- Subscribes to `{topic_prefix}/command` for `wake`, `sleep`, `steam_on`,
-  `steam_off`, safe operation stop, `profile <name>`, and
-  `profile_filename <file>`.
-- MQTT over raw TCP or TLS (matching de1app, not MQTT-over-WebSocket).
-- Auto-generated unique client ID and topic prefix so multiple machines never
-  collide on one broker.
-- Reconnect loop with exponential backoff (2 s doubling, capped at 64 s, 15
-  attempts); MQTT last will publishes an explicit offline state document.
-- Optional Home Assistant MQTT discovery for a single grouped Decent device,
-  including live pressure/flow, targets, scale, shot, connectivity and tablet
-  entities. No Home Assistant YAML or custom integration is required.
+- Retained MQTT state with machine, scale, temperature, water, profile, usage,
+  and shot telemetry
+- Live shot weight plus final yield, shot ID, start time, and duration
+- Optional Home Assistant MQTT discovery with one grouped Decent device
+- Wake, sleep, steam-heater, profile-selection, and safe stop controls
+- Automatic MQTT 5 to MQTT 3.1.1 fallback, connection verification, and
+  reconnect with exponential backoff
+- Activity-aware publishing: up to every 1 s during a shot, 2 s while heating,
+  5 s while awake and idle, and the configured heartbeat while inactive
 
-## Payloads
+## Requirements
 
-All state is published to `{topic_prefix}/state` as a single JSON document
-(QoS 1, retained). Below, the auto-generated topic prefix
-`de1plus/<unique_id>` is written as `de1plus/abcd1234`.
+- Decaid 0.8.5 or newer
+- An MQTT broker reachable from the Decaid tablet
+- Home Assistant 2025.2 or newer when using MQTT discovery
 
-Machine awake and idle, no scale connected:
+Custom CA certificates and mutual TLS are not currently supported because the
+Decaid plugin transport does not yet expose custom trust material
+([decaid#758](https://github.com/decentespresso/decaid/issues/758)).
 
-```json
-{
-  "online": true,
-  "de1_connected": true,
-  "scale_connected": false,
-  "state": "Idle",
-  "substate": "ready",
-  "profile": "Medium",
-  "profile_filename": "medium.tcl",
-  "espresso_count": 1234,
-  "steaming_count": 56,
-  "head_temperature": 93.5,
-  "mix_temperature": 92.1,
-  "steam_heater_temperature": 24.0,
-  "wake_state": true,
-  "steam_mode": "Off",
-  "steam_state": false,
-  "water_level_mm": 58.0,
-  "water_level_ml": 1808,
-  "shot_active": false
-}
+## Installation
+
+In Decaid, open **Settings → Plugins → Add repository**, enter:
+
+```text
+peterthepeter/decaid-mqtt-bridge
 ```
 
-During a shot with a scale connected (published ~1 s apart while pouring):
+Choose the **GitHub release** source. Decaid then tracks the repository and
+offers new semantic-versioned releases as plugin updates.
 
-```json
-{
-  "online": true,
-  "de1_connected": true,
-  "scale_connected": true,
-  "state": "Espresso",
-  "substate": "pouring",
-  "profile": "Medium",
-  "profile_filename": "medium.tcl",
-  "espresso_count": 1234,
-  "steaming_count": 56,
-  "head_temperature": 93.5,
-  "mix_temperature": 92.1,
-  "steam_heater_temperature": 24.0,
-  "wake_state": true,
-  "steam_mode": "Off",
-  "steam_state": false,
-  "water_level_mm": 57.0,
-  "water_level_ml": 1808,
-  "shot_active": true,
-  "shot_weight_g": 18.4
-}
+The equivalent API request is:
+
+```http
+POST http://<tablet>:8080/api/v1/plugins/install/github-release
 ```
 
-After the shot completes, `shot_active` becomes `false` and the shot record
-fills in (`shot_id`, `shot_started_at`, `shot_duration_s`, and
-`shot_weight_g` as the final yield):
-
 ```json
-{
-  "online": true,
-  "de1_connected": true,
-  "scale_connected": true,
-  "state": "Idle",
-  "substate": "ready",
-  "profile": "Medium",
-  "profile_filename": "medium.tcl",
-  "espresso_count": 1235,
-  "steaming_count": 56,
-  "head_temperature": 93.5,
-  "mix_temperature": 92.1,
-  "steam_heater_temperature": 24.0,
-  "wake_state": true,
-  "steam_mode": "Off",
-  "steam_state": false,
-  "water_level_mm": 57.0,
-  "water_level_ml": 1808,
-  "shot_active": false,
-  "shot_id": "a1b2c3d4",
-  "shot_started_at": "2026-09-12T13:14:15.000Z",
-  "shot_duration_s": 27.5,
-  "shot_weight_g": 36.2
-}
+{"repo": "peterthepeter/decaid-mqtt-bridge"}
 ```
 
-Machine asleep, no scale, no shot history: the 17 de1app-compatible fields
-plus `shot_active: false` (shot fields without values are omitted).
+### Replacing the original MQTT plugin
 
-Machine link down or app dead (also the last-will payload, retained):
+This bridge keeps the original plugin ID, `mqtt.reaplugin`, for compatibility.
+The two plugins therefore cannot run side by side. Back up the existing
+settings before replacing the original plugin, then verify that Decaid tracks
+`peterthepeter/decaid-mqtt-bridge` for future updates.
 
-```json
-{"online": false, "de1_connected": false}
+Branch and local-build installation instructions are in
+[Development](doc/development.md#alternative-installation-methods).
+
+## Configuration
+
+Configure the plugin from Decaid's plugin settings screen:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| MQTT broker address | *(empty)* | Hostname or IP without scheme or port; empty disables the bridge |
+| Broker port | `8883` | Use 8883 for TLS or 1883 for plain TCP |
+| Encrypted connection (TLS) | On | Uses platform certificate validation |
+| Username / Password | *(empty)* | Optional broker credentials |
+| Enable Home Assistant auto-discovery | Off | Publishes retained Home Assistant entities |
+| Home Assistant device name | Automatic | Defaults to the connected machine model |
+| Status heartbeat | `60` seconds | Regular state refresh while sleeping or disconnected |
+| Advanced: MQTT topic prefix | Automatic | Defaults to `de1plus/<unique-id>` |
+| Advanced: Home Assistant discovery prefix | `homeassistant` | Must match Home Assistant's MQTT configuration |
+| Advanced: Home Assistant entity name prefix | `DE1+ ` | Optional entity display-name prefix |
+| Advanced: MQTT client ID | Automatic | Defaults to `de1plus_<unique-id>` |
+
+After entering the broker settings, save once to reload the plugin and test the
+real connection. The log reports success only after MQTT CONNECT, the command
+subscription, and the first retained QoS 1 state publish are acknowledged.
+Look for `MQTT connection verified`.
+
+Enable Home Assistant auto-discovery and save again if you want Home Assistant
+to create the device and its entities automatically. Disable discovery and
+save before changing brokers or uninstalling so the plugin can remove its
+retained discovery topics.
+
+## MQTT interface
+
+State is published as retained JSON with QoS 1 to:
+
+```text
+{topic_prefix}/state
 ```
 
-When the machine is connected, all fields above are always present except the
-shot record fields (`shot_id`, `shot_started_at`, `shot_duration_s`,
-`shot_weight_g`), which appear after the first completed shot;
-`shot_weight_g` additionally requires a scale. Full field reference:
-[doc/protocol.md](doc/protocol.md#state-document-tstate).
+The current profile is polled from Decaid's workflow API on the heartbeat
+cadence, so profile changes are published without starting a shot. Profile
+changes sent through this bridge are re-polled immediately.
 
-### Commands
+Send plain-text UTF-8 commands to:
 
-Send plain-text UTF-8 payloads to `{topic_prefix}/command`
-(e.g. `de1plus/abcd1234/command`):
+```text
+{topic_prefix}/command
+```
 
 | Payload | Action |
 |---------|--------|
 | `wake` | Wake the machine |
 | `sleep` | Put the machine to sleep |
-| `steam_on` / `steam_off` | Toggle the steam heater through the same workflow setting and remembered target used by Streamline |
+| `steam_on` / `steam_off` | Toggle the steam heater |
 | `stop` | Stop espresso, steam, hot water, or rinse |
-| `profile <name>` | Select a profile by title, e.g. `profile Medium` |
-| `profile_filename <file>` | Select a profile by filename, e.g. `profile_filename medium.tcl` |
+| `profile <name>` | Select a profile by title |
+| `profile_filename <file>` | Select a profile by filename |
 
-Unknown payloads are logged and ignored.
+Unknown commands are logged and ignored. See the [protocol
+reference](doc/protocol.md) for the complete state document, payload examples,
+topics, delivery guarantees, and shot events.
 
-## Install
+## Home Assistant controls
 
-### From a GitHub release (tracked, auto-updates)
+Discovery creates one device containing sensors, binary sensors, power and
+steam-heater switches, a profile selector, a Stop control, and shot events. No
+Home Assistant YAML or custom integration is required.
 
-Open **Settings → Plugins → Add repository** in Decaid and enter this
-repository as `peterthepeter/decaid-mqtt-bridge`. Choose the GitHub release source. Decaid
-stores the repository source and offers newer semantic-versioned releases as
-automatic plugin updates.
+Remote start buttons are intentionally not exposed. On machines with an active
+Group Head Controller, Decaid can acknowledge a start request even though the
+firmware still requires physical confirmation. The Stop control remains
+available for an active beverage or rinse operation.
 
-```
-POST http://<tablet>:8080/api/v1/plugins/install/github-release
-{"repo": "peterthepeter/decaid-mqtt-bridge"}
-```
+## Troubleshooting
 
-or use the Plugins settings screen in Decaid.
+- **No broker connection:** Check the host, port, credentials, TLS mode, and
+  Decaid plugin log.
+- **Verification fails:** The broker account must be allowed to subscribe to
+  `<topic_prefix>/command` and publish to `<topic_prefix>/state`.
+- **No Home Assistant entities:** Enable discovery and make sure Decaid and
+  Home Assistant use the same broker and discovery prefix.
+- **Entities are unavailable:** Broker connectivity alone does not mean the
+  machine or scale is connected.
 
-### From a branch (tracked, updates on commit)
+More diagnostic guidance is available in
+[Troubleshooting](doc/troubleshooting.md). Report reproducible problems through
+[GitHub Issues](https://github.com/peterthepeter/decaid-mqtt-bridge/issues) with
+versions and redacted logs. Never include broker passwords or access tokens.
 
-```
-POST http://<tablet>:8080/api/v1/plugins/install/github-branch
-{"repo": "peterthepeter/decaid-mqtt-bridge"}
-```
+## Documentation
 
-### From a local build
+- [MQTT protocol and payload reference](doc/protocol.md)
+- [Architecture](doc/architecture.md)
+- [Development, testing, and alternative installation](doc/development.md)
+- [Troubleshooting](doc/troubleshooting.md)
+- [Changelog](CHANGELOG.md)
+- [Security guidance](SECURITY.md)
 
-Zip the `mqtt.reaplugin/` directory and install it from the Plugins settings
-screen (local ZIP), or copy it into the app's plugin folder.
-
-## Compatibility
-
-- Requires Decaid **0.8.5 or later** (that is the first stable release with
-  the plugin `host.transport` network permissions this plugin needs).
-- The manifest deliberately does not request `events.workflow` (0.8.6+ only);
-  instead the current profile title is polled from `GET /api/v1/workflow` on
-  the heartbeat cadence, so `profile`/`profile_filename` stay correct on both
-  0.8.5 and newer builds. After a `profile`/`profile_filename` command the
-  state is re-polled immediately.
-- The manifest carries explicit empty `api` and `drivers` arrays because
-  Decaid's manifest parser requires a (possibly empty) list for `api`.
-- On 0.8.5 the broker password is stored in regular settings storage; secure
-  credential storage arrives with later Decaid versions (`secure: true` is
-  already declared).
-
-## Settings
-
-Configured in Decaid's plugin settings screen:
-
-| Setting | Default | Meaning |
-|---------|---------|---------|
-| MQTT broker address | *(empty)* | Hostname/IP without scheme or port; empty disables the bridge |
-| Broker port | 8883 | 8883 for TLS, 1883 for plain TCP |
-| Encrypted connection (TLS) | on | Platform certificate validation; choose a matching port |
-| Username / Password | *(empty)* | Optional broker credentials; password stays secure |
-| Enable Home Assistant auto-discovery | off | Publish/remove retained HA entities |
-| Home Assistant device name (optional) | auto | Derived from the connected machine model |
-| Status heartbeat (seconds) | 60 | Regular combined status while sleeping/disconnected; wake/connection changes immediate; measurements up to every 1 s brewing, 2 s heating, 5 s awake idle |
-| Advanced: MQTT topic prefix | auto | Normally leave unchanged; `de1plus/<unique id>` when empty |
-| Advanced: Home Assistant discovery prefix | `homeassistant` | Normally unchanged; must match HA's MQTT setting |
-| Advanced: Home Assistant entity name prefix | `DE1+ ` | Optional prefix for entity display names |
-| Advanced: MQTT client ID | auto | Compatibility/custom broker requirements; `de1plus_<unique id>` when empty |
-
-Decaid renders one flat settings list, not collapsible groups. Advanced fields
-are therefore labeled and placed last. There is only one heartbeat field, in
-seconds, visibly defaulting to `60`. The old millisecond field is removed;
-installations without a saved seconds value use 60 seconds after updating.
-Existing client IDs remain supported. Automatic telemetry cadence needs no
-extra settings. A lower heartbeat can also cause more frequent combined state
-messages; use the recommended 60 seconds for quiet standby operation.
-
-After saving the broker settings, enable Home Assistant auto-discovery once.
-Home Assistant 2025.2 or newer then creates one device containing the sensors,
-binary sensors, power/steam switches, profile selector and shot event entity.
-Home Assistant discovery intentionally exposes no remote-start buttons. On
-machines with an active Group Head Controller, Decaid can acknowledge a state
-request even though the firmware still requires physical confirmation. The
-working Stop button remains available and can stop an active beverage or rinse.
-Disable discovery and save before moving to another broker or uninstalling so
-the plugin can retract its retained discovery topics.
-
-Saving settings reloads the plugin and therefore tests the real broker
-connection. The plugin reports success only after MQTT CONNECT, the command
-subscription, and the first retained QoS 1 state publish have been acknowledged.
-Look for `MQTT connection verified` in the Decaid plugin log; connection,
-authentication, subscription, publish, and timeout failures identify the
-failed stage without logging the broker password.
-
-Telemetry is activity-aware: active operations publish at most once per
-second, heating every two seconds, awake idle readings every five seconds,
-and sleeping/disconnected machines only on transitions plus the configured
-heartbeat. Power and connection transitions are always published immediately.
-
-Custom CA / mutual TLS is not supported yet — it depends on the plugin
-transport gaining custom trust material
-([decaid#758](https://github.com/decentespresso/decaid/issues/758)).
-
-## Development
-
-```
-npm install
-npm run build       # bundles src/ + mqtt.js into mqtt.reaplugin/plugin.js
-npm test            # unit tests (no broker or sockets required)
-npm run test:integ  # end-to-end integration tests (~2 min, real sockets)
-```
-
-### Integration tests
-
-`npm run test:integ` is a separate build target from `npm test`. It runs the
-**built** `mqtt.reaplugin/plugin.js` bundle inside a sandboxed VM that mirrors
-the Decaid plugin runtime (`host.transport` over real TCP sockets, host-owned
-`fetch`, async `storageRead` events, permission gating, transport limits)
-against a purpose-built in-process MQTT broker (MQTT 3.1.1 and 5, retained
-messages, last will, QoS 1, auth) and a simulated Decaid REST/WebSocket API on
-a real loopback HTTP server. No external broker, machine or app instance is
-required; everything runs on ephemeral localhost ports, so it works in any
-developer environment and in CI.
-
-The suite covers: broker handshake (client id, keepalive, will, MQTT 5 with
-3.1.1 fallback), state document wire format and publish triggers, heartbeat
-cadence, live shot weight over the scale stream, shot completion records,
-water levels, profile selection, all six commands, unknown/invalid commands,
-broker outage and restart reconnects, last-will offline documents on abnormal
-client death, unload teardown, and broker authentication.
-
-CI runs both the unit and integration suites against the committed bundle.
-
-The built `plugin.js` is committed so branch installs work; CI verifies it is
-up to date and repackages it for releases. Tag a release `vX.Y.Z` matching
-`manifest.json`'s `version`.
-
-### Status and known limitations
-
-- The `host.transport` → MQTT.js adapter (`src/host-transport-stream.js`,
-  `src/bridge.js`) is exercised end-to-end by `npm run test:integ` against a
-  real in-process broker over real TCP sockets. On-device TLS (platform trust
-  store) is not covered by the harness; everything else runs the shipping
-  bundle.
-- Home Assistant auto-discovery targets Home Assistant 2025.2 and later and is
-  disabled by default for compatibility with existing MQTT installations.
-- Commands execute through Decaid's own REST API over loopback HTTP (same
-  pattern as the bundled Visualizer plugin).
-
-## License
-
-MIT
-
-## Migration and troubleshooting
-
-The plugin ID remains `mqtt.reaplugin` for compatibility. This bridge and the
-original MQTT plugin cannot run side by side under that ID. Back up your
-settings before replacing an existing installation, and verify the tracked
-repository source afterwards so updates come from this repository.
-
-- No broker connection: check host, port, credentials, TLS mode, and the
-  Decaid plugin log. TLS uses platform certificate validation.
-- Connection succeeds but verification fails: the broker account must allow
-  subscription to `<topic_prefix>/command` and publishing to
-  `<topic_prefix>/state`. Discovery additionally requires publishing to the
-  configured Home Assistant discovery prefix.
-- No Home Assistant entities: both services must use the same broker;
-  enable discovery in this plugin and ensure the discovery prefixes match.
-- Entities unavailable: check machine/scale connectivity. Broker connectivity
-  alone does not mean that a machine snapshot is available.
-
-Report reproducible problems through this repository's GitHub Issues. Include
-versions and redacted logs, never broker passwords or access tokens. See
-[SECURITY.md](SECURITY.md) for security reporting and deployment notes.
-
-## Acknowledgements and provenance
+## Acknowledgements and license
 
 This independent project was originally based on
 [meldavy/decaid-mqtt-plugin](https://github.com/meldavy/decaid-mqtt-plugin)
-(MIT), at commit `a00b4b46d333360872501d67e8a6945db0504652`.
-The inherited MQTT transport and protocol foundation has been extended with
-Home Assistant discovery, additional telemetry, guarded controls,
-activity-aware publishing, connection verification, and automated tests.
-Installation and updates are served by this repository, not the original.
+(MIT), at commit `a00b4b46d333360872501d67e8a6945db0504652`. Its MQTT
+transport and protocol foundation has since been extended with Home Assistant
+discovery, additional telemetry, guarded controls, activity-aware publishing,
+connection verification, and automated tests. Installation and updates are
+served by this repository, not the original.
 
 [teich/ha-decaid](https://github.com/teich/ha-decaid) served as a reference for
 Decaid entity coverage and API behavior; no source code was copied from it.
 [simpkins/de1plus-mqtt](https://github.com/simpkins/de1plus-mqtt) is the
 reference for the compatible base MQTT vocabulary.
+
+Licensed under the [MIT License](LICENSE). This project is not affiliated with
+Decent Espresso or Home Assistant.
