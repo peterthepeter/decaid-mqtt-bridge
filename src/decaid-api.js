@@ -19,7 +19,11 @@ export function createDecaidApi({ fetchImpl, log }) {
   }
 
   async function fetchShotRecord(shotId) {
-    return getJson(`/api/v1/shots/${shotId}`);
+    return getJson(`/api/v1/shots/${encodeURIComponent(shotId)}`);
+  }
+
+  async function fetchLatestShot() {
+    return getJson("/api/v1/shots/latest", { quiet: true });
   }
 
   async function fetchWorkflow() {
@@ -60,6 +64,7 @@ export function createDecaidApi({ fetchImpl, log }) {
 
   return {
     fetchShotRecord,
+    fetchLatestShot,
     fetchWorkflow,
     fetchProfiles,
     fetchSettings,

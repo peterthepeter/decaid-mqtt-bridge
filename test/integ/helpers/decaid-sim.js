@@ -182,8 +182,15 @@ export function createDecaidSim() {
       state.store[key] = raw ? JSON.parse(raw) : null;
       return json(200, { ok: true });
     }
+    if (req.method === "GET" && url.pathname === "/api/v1/shots/latest") {
+      const latest = [...state.shots].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
+      if (!latest) return json(200, null);
+      const { measurements, ...metadata } = latest;
+      return json(200, metadata);
+    }
     const shotMatch = url.pathname.match(/^\/api\/v1\/shots\/([^/]+)$/);
     if (req.method === "GET" && shotMatch) {
+      if (state.shotRecordResponseGate) await state.shotRecordResponseGate;
       const shot = state.shots.find((s) => s.id === decodeURIComponent(shotMatch[1]));
       return shot ? json(200, shot) : json(404, { error: "not found" });
     }

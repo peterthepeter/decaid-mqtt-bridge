@@ -283,7 +283,7 @@ var __mqttBundle = (() => {
     addFinite(stateMessage, "target_yield_g", workflow?.context?.targetYield);
     addFinite(stateMessage, "tablet_battery_percent", settings?.chargingState?.batteryPercent);
     addString(stateMessage, "shot_phase", shotState?.state);
-    addString(stateMessage, "last_shot_stop_reason", shotState?.stopReason);
+    addString(stateMessage, "last_shot_stop_reason", shot?.stopReason ?? shotState?.stopReason);
     if (typeof shotState?.scaleLost === "boolean") {
       stateMessage.scale_lost_during_shot = shotState.scaleLost;
     }
@@ -292,6 +292,7 @@ var __mqttBundle = (() => {
     if (shot?.startedAt !== void 0 && shot?.startedAt !== null) stateMessage.shot_started_at = shot.startedAt;
     if (shot?.durationS !== void 0 && shot?.durationS !== null) stateMessage.shot_duration_s = shot.durationS;
     if (shot?.weightG !== void 0 && shot?.weightG !== null) stateMessage.shot_weight_g = shot.weightG;
+    addString(stateMessage, "shot_profile", shot?.profile);
     return stateMessage;
   }
   function addFinite(target, key, value) {
@@ -400,7 +401,10 @@ var __mqttBundle = (() => {
       }
     }
     async function fetchShotRecord(shotId) {
-      return getJson(`/api/v1/shots/${shotId}`);
+      return getJson(`/api/v1/shots/${encodeURIComponent(shotId)}`);
+    }
+    async function fetchLatestShot() {
+      return getJson("/api/v1/shots/latest", { quiet: true });
     }
     async function fetchWorkflow() {
       return getJson("/api/v1/workflow", { quiet: true });
@@ -430,6 +434,7 @@ var __mqttBundle = (() => {
     }
     return {
       fetchShotRecord,
+      fetchLatestShot,
       fetchWorkflow,
       fetchProfiles,
       fetchSettings,
@@ -12854,6 +12859,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     ["Shot Weight", "shot_weight", "shot_weight_g", { device_class: "weight", state_class: "measurement", unit_of_measurement: "g" }],
     ["Shot Duration", "shot_duration", "shot_duration_s", { device_class: "duration", unit_of_measurement: "s" }],
     ["Shot Started At", "shot_started_at", "shot_started_at", { device_class: "timestamp" }],
+    ["Shot Profile", "shot_profile", "shot_profile", { icon: "mdi:chart-bell-curve" }],
     ["Target Dose", "target_dose", "target_dose_g", { device_class: "weight", unit_of_measurement: "g" }],
     ["Target Yield", "target_yield", "target_yield_g", { device_class: "weight", unit_of_measurement: "g" }],
     ["Tablet Battery", "tablet_battery", "tablet_battery_percent", { device_class: "battery", state_class: "measurement", unit_of_measurement: "%", availability: "online" }]
@@ -12896,7 +12902,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.6" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.7" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12986,6 +12992,44 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     return messages;
   }
 
+  // src/shot-record.js
+  function readCompletedShot(record, fallbackId) {
+    const measurements = Array.isArray(record.measurements) ? record.measurements : [];
+    const first = measurements[0];
+    const last = measurements[measurements.length - 1];
+    const startMs = timestampMs(first?.machine?.timestamp);
+    const endMs = timestampMs(last?.machine?.timestamp);
+    const recordedMs = timestampMs(record.timestamp) ?? startMs;
+    const actualYield = record.annotations?.actualYield;
+    let weightG = validWeight(actualYield) ? actualYield : null;
+    if (weightG === null) {
+      for (let index = measurements.length - 1; index >= 0; index -= 1) {
+        const weight = measurements[index]?.scale?.weight;
+        if (validWeight(weight)) {
+          weightG = weight;
+          break;
+        }
+      }
+    }
+    return {
+      active: false,
+      id: record.id ?? fallbackId,
+      startedAt: recordedMs === null ? null : new Date(recordedMs).toISOString(),
+      durationS: startMs === null || endMs === null ? null : Math.max(0, (endMs - startMs) / 1e3),
+      weightG,
+      profile: typeof record.workflow?.profile?.title === "string" ? record.workflow.profile.title : null,
+      stopReason: typeof record.stopReason === "string" ? record.stopReason : null
+    };
+  }
+  function timestampMs(value) {
+    if (typeof value !== "string" || !value) return null;
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  function validWeight(value) {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  }
+
   // src/main.js
   var PLUGIN_ID = "mqtt.reaplugin";
   var REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
@@ -13028,6 +13072,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       steamingCount: 0,
       shotWeightG: null,
       shot: null,
+      shotGeneration: 0,
       lastState: null,
       lastSubstate: null,
       lastPublishedStateJson: null,
@@ -13042,7 +13087,9 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         id: active ? null : runtime.shot?.id ?? null,
         startedAt: active ? null : runtime.shot?.startedAt ?? null,
         durationS: active ? null : runtime.shot?.durationS ?? null,
-        weightG: active ? runtime.shotWeightG : runtime.shot?.weightG ?? runtime.shotWeightG
+        weightG: active ? runtime.shotWeightG : runtime.shot?.id ? runtime.shot.weightG : runtime.shot?.weightG ?? runtime.shotWeightG,
+        profile: active ? null : runtime.shot?.profile ?? null,
+        stopReason: active ? null : runtime.shot?.stopReason ?? null
       };
     }
     function currentStateMessage() {
@@ -13139,6 +13186,11 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       if (settings) runtime.settings = settings;
       if (Array.isArray(devices)) applyDevices(devices);
       if (machineInfo && typeof machineInfo === "object") runtime.metadata = machineInfo;
+      if (fullStatic && !runtime.shot) {
+        const generation = runtime.shotGeneration;
+        const latest = await api.fetchLatestShot();
+        if (latest?.id && !runtime.shot) await loadStoredShot(latest.id, generation);
+      }
       if (refreshCounts) await refreshUsageCounts();
       runtime.discoverySignature = JSON.stringify({
         metadata: runtime.metadata,
@@ -13193,10 +13245,12 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       const state = mapState(rawState);
       const substate = mapSubstate(rawSubstate) ?? "";
       const active = isShotActive(state, substate);
+      const wasActive = isShotActive(mapState(runtime.lastState), mapSubstate(runtime.lastSubstate));
       const transitioned = rawState !== runtime.lastState || rawSubstate !== runtime.lastSubstate;
       runtime.lastState = rawState;
       runtime.lastSubstate = rawSubstate;
-      if (active && runtime.shot?.active !== true) {
+      if (active && !wasActive) {
+        runtime.shotGeneration += 1;
         runtime.shot = { active: true };
         runtime.shotWeightG = null;
       } else if (!active && runtime.shot?.active === true) {
@@ -13212,27 +13266,22 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     async function onShotStored(payload) {
       const shotId = payload?.id;
       if (!shotId) return;
-      const record = await api.fetchShotRecord(shotId);
-      if (!record) return;
-      const measurements = Array.isArray(record.measurements) ? record.measurements : [];
-      const first = measurements[0];
-      const last = measurements[measurements.length - 1];
-      let durationS = null;
-      const startMs = new Date(first?.machine?.timestamp).getTime();
-      const endMs = new Date(last?.machine?.timestamp).getTime();
-      if (Number.isFinite(startMs) && Number.isFinite(endMs)) durationS = Math.max(0, (endMs - startMs) / 1e3);
-      const actualYield = record.annotations?.actualYield;
-      const finalWeight = Number.isFinite(actualYield) ? actualYield : last?.scale?.weight ?? null;
-      if (!Number.isFinite(actualYield)) log(`shot ${shotId} has no actualYield; using the last scale sample`);
-      runtime.shot = {
-        active: false,
-        id: record.id ?? shotId,
-        startedAt: record.timestamp ?? null,
-        durationS,
-        weightG: finalWeight
-      };
-      runtime.shotWeightG = finalWeight;
+      if (!await loadStoredShot(shotId, runtime.shotGeneration)) return;
       await enqueuePublish({ refreshStatic: true, refreshCounts: true });
+    }
+    async function loadStoredShot(shotId, generation) {
+      const record = await api.fetchShotRecord(shotId);
+      if (!record || stopping) return false;
+      if (generation !== runtime.shotGeneration) {
+        log(`shot ${shotId} ignored: a newer espresso shot has started`);
+        return false;
+      }
+      if (!Number.isFinite(record.annotations?.actualYield)) {
+        log(`shot ${shotId} has no actualYield; using the last usable scale sample`);
+      }
+      runtime.shot = readCompletedShot(record, shotId);
+      runtime.shotWeightG = runtime.shot.weightG;
+      return true;
     }
     function addStream(options) {
       const stream = createLoopbackJsonStream({ host, log, ...options });

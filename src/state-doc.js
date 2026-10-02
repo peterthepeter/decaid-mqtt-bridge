@@ -2,7 +2,7 @@ import { mapState, mapSubstate, deriveWakeState, deriveSteamFields } from "./map
 
 const WATER_LEVEL_FIELDS = ["water_level_mm", "water_level_ml"];
 
-const SHOT_FIELDS = ["shot_active", "shot_id", "shot_started_at", "shot_duration_s", "shot_weight_g"];
+const SHOT_FIELDS = ["shot_active", "shot_id", "shot_started_at", "shot_duration_s", "shot_weight_g", "shot_profile"];
 
 const BASE_FIELDS = [
   "online",
@@ -105,7 +105,7 @@ export function buildStateMessage(input) {
   addFinite(stateMessage, "target_yield_g", workflow?.context?.targetYield);
   addFinite(stateMessage, "tablet_battery_percent", settings?.chargingState?.batteryPercent);
   addString(stateMessage, "shot_phase", shotState?.state);
-  addString(stateMessage, "last_shot_stop_reason", shotState?.stopReason);
+  addString(stateMessage, "last_shot_stop_reason", shot?.stopReason ?? shotState?.stopReason);
   if (typeof shotState?.scaleLost === "boolean") {
     stateMessage.scale_lost_during_shot = shotState.scaleLost;
   }
@@ -115,6 +115,7 @@ export function buildStateMessage(input) {
   if (shot?.startedAt !== undefined && shot?.startedAt !== null) stateMessage.shot_started_at = shot.startedAt;
   if (shot?.durationS !== undefined && shot?.durationS !== null) stateMessage.shot_duration_s = shot.durationS;
   if (shot?.weightG !== undefined && shot?.weightG !== null) stateMessage.shot_weight_g = shot.weightG;
+  addString(stateMessage, "shot_profile", shot?.profile);
 
   return stateMessage;
 }

@@ -35,6 +35,7 @@ const SENSOR_DEFINITIONS = [
   ["Shot Weight", "shot_weight", "shot_weight_g", { device_class: "weight", state_class: "measurement", unit_of_measurement: "g" }],
   ["Shot Duration", "shot_duration", "shot_duration_s", { device_class: "duration", unit_of_measurement: "s" }],
   ["Shot Started At", "shot_started_at", "shot_started_at", { device_class: "timestamp" }],
+  ["Shot Profile", "shot_profile", "shot_profile", { icon: "mdi:chart-bell-curve" }],
   ["Target Dose", "target_dose", "target_dose_g", { device_class: "weight", unit_of_measurement: "g" }],
   ["Target Yield", "target_yield", "target_yield_g", { device_class: "weight", unit_of_measurement: "g" }],
   ["Tablet Battery", "tablet_battery", "tablet_battery_percent", { device_class: "battery", state_class: "measurement", unit_of_measurement: "%", availability: "online" }],
@@ -87,7 +88,7 @@ function common(config, metadata, name, key, availabilityKind) {
     unique_id: entityId(config, key),
     availability: availability(config, availabilityKind),
     device: device(config, metadata),
-    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.6" },
+    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.7" },
   };
 }
 

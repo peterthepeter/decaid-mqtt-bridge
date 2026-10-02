@@ -13,6 +13,7 @@ that bundle using the sibling `manifest.json`.
 | `host-transport-stream.js` | MQTT.js duplex adapter for Decaid TCP/TLS transports |
 | `loopback.js` | Reconnecting JSON WebSocket client for Decaid streams |
 | `decaid-api.js` | Loopback REST reads and history counts |
+| `shot-record.js` | Completed-shot yield, duration, timestamp and recorded profile |
 | `state-doc.js`, `mapping.js` | Stable MQTT state schema and enum mapping |
 | `dispatcher.js`, `command-handler.js` | Strict parsing and guarded Decaid REST commands |
 | `discovery.js` | Home Assistant discovery configs and stable topic identities |

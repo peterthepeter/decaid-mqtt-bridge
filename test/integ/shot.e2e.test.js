@@ -134,6 +134,97 @@ test("shotStored failure keeps the document publishable", async () => {
   assert.equal(latestStateDoc(broker).online, true);
 });
 
+test("shotStored before Idle preserves the finished record through Espresso updates, cup removal, steam, rinse and sleep", async () => {
+  const { sim, broker, plugin } = env;
+  await waitFor(() => latestStateDoc(broker));
+  plugin.event("stateUpdate", machineSnapshot({ state: "espresso", substate: "pouring" }));
+  await waitFor(() => latestStateDoc(broker)?.shot_active === true);
+  const record = shotRecord("shot-early-store", { actualYield: 32.9, durationMs: 27450 });
+  record.workflow = { profile: { title: "Advanced spring lever" } };
+  record.stopReason = "targetWeight";
+  sim.state.shots = [record];
+  plugin.event("shotStored", { id: record.id });
+  await waitFor(() => latestStateDoc(broker)?.shot_id === record.id);
+
+  sim.setScaleStatus("connected");
+  sim.queueScaleSnapshot({ timestamp: new Date().toISOString(), weight: -296.7 });
+  for (const [state, substate] of [
+    ["espresso", "pouringDone"], ["idle", "idle"], ["steam", "pouring"],
+    ["flush", "pouring"], ["sleeping", "idle"],
+  ]) {
+    plugin.event("stateUpdate", machineSnapshot({ state, substate }));
+    const expectedState = { espresso: "Espresso", idle: "Idle", steam: "Steam", flush: "HotWaterRinse", sleeping: "Sleep" }[state];
+    await waitFor(() => latestStateDoc(broker)?.state === expectedState
+      && latestStateDoc(broker)?.substate === (substate === "idle" ? "ready" : substate === "pouringDone" ? "ending" : substate));
+    const doc = latestStateDoc(broker);
+    assert.equal(doc.shot_active, false);
+    assert.equal(doc.shot_id, record.id);
+    assert.equal(doc.shot_weight_g, 32.9);
+    assert.equal(doc.shot_duration_s, 27.45);
+    assert.equal(doc.shot_started_at, record.timestamp);
+    assert.equal(doc.shot_profile, "Advanced spring lever");
+    assert.equal(doc.last_shot_stop_reason, "targetWeight");
+  }
+
+  plugin.event("stateUpdate", machineSnapshot({ state: "idle" }));
+  await waitFor(() => latestStateDoc(broker)?.state === "Idle");
+  plugin.event("stateUpdate", machineSnapshot({ state: "espresso", substate: "preinfusion" }));
+  await waitFor(() => latestStateDoc(broker)?.shot_active === true);
+  assert.equal(latestStateDoc(broker).shot_id, undefined);
+  assert.equal(latestStateDoc(broker).shot_profile, undefined);
+  assert.equal(latestStateDoc(broker).shot_duration_s, undefined);
+});
+
+test("startup restores completed-shot details and keeps the stored profile when the current recipe changes", async () => {
+  await env.stop();
+  env = await startE2E({ simSetup: (sim) => {
+    const record = shotRecord("restored", { actualYield: 32.9 });
+    record.workflow = { profile: { title: "Stored lever profile" } };
+    record.stopReason = "targetWeight";
+    sim.state.shots = [record];
+    sim.state.workflow.profile = { title: "Current recipe" };
+  } });
+  const { sim, broker, plugin } = env;
+  await waitFor(() => sim.requests.some(r => r.path === "/api/v1/shots/restored"));
+  plugin.event("stateUpdate", machineSnapshot({ state: "sleeping" }));
+  await waitFor(() => latestStateDoc(broker)?.shot_id === "restored");
+  let doc = latestStateDoc(broker);
+  assert.equal(doc.shot_active, false);
+  assert.equal(doc.shot_weight_g, 32.9);
+  assert.equal(doc.shot_duration_s, 28.4);
+  assert.equal(doc.shot_started_at, "2026-09-09T07:15:00.000Z");
+  assert.equal(doc.shot_profile, "Stored lever profile");
+  assert.equal(doc.profile, "Current recipe");
+  assert.equal(doc.last_shot_stop_reason, "targetWeight");
+  sim.state.workflow.profile = { title: "Another recipe" };
+  await waitFor(() => latestStateDoc(broker)?.profile === "Another recipe");
+  doc = latestStateDoc(broker);
+  assert.equal(doc.shot_profile, "Stored lever profile");
+  assert.equal(sim.requests.filter(r => r.path === "/api/v1/shots/latest").length, 1);
+});
+
+test("a slow startup history response cannot replace a new active shot", async () => {
+  await env.stop();
+  let releaseHistory;
+  env = await startE2E({ simSetup: (sim) => {
+    sim.state.shots = [shotRecord("old-history", { actualYield: 32.9 })];
+    sim.state.shotRecordResponseGate = new Promise(resolve => { releaseHistory = resolve; });
+  } });
+  const { sim, broker, plugin } = env;
+  try {
+    await waitFor(() => sim.requests.some(r => r.path === "/api/v1/shots/old-history"));
+    plugin.event("stateUpdate", machineSnapshot({ state: "espresso", substate: "preinfusion" }));
+    releaseHistory();
+    await plugin.waitForLog(/shot old-history ignored: a newer espresso shot has started/);
+    await waitFor(() => latestStateDoc(broker)?.shot_active === true);
+    assert.equal(latestStateDoc(broker).shot_id, undefined);
+    assert.equal(latestStateDoc(broker).shot_weight_g, undefined);
+    assert.equal(latestStateDoc(broker).shot_duration_s, undefined);
+  } finally {
+    releaseHistory();
+  }
+});
+
 test("scale disconnect marks scale_connected false without blocking publishing", async () => {
   const { sim, broker, plugin } = env;
   await waitFor(() => broker.publishes.some((p) => p.topic.endsWith("/state")));

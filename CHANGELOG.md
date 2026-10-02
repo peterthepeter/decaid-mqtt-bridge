@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.7 — 2026-10-02
+
+- Preserve completed-shot results when `shotStored` arrives while the machine
+  still reports Espresso; only a new Espresso state transition starts a shot.
+- Restore the latest stored shot on plugin startup without overwriting a new
+  shot that starts while the history request is in progress.
+- Publish the completed shot's recorded profile and normalize its start time
+  to an explicit timestamp for Home Assistant.
+- Ignore negative cup-removal samples when deriving a missing final yield.
+
 ## 0.2.6 — 2026-09-20
 
 - Remove the non-functional Home Assistant buttons and MQTT commands for

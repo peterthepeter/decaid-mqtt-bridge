@@ -178,6 +178,8 @@ test("post-shot fields populate from the completed shot", () => {
       startedAt: "2026-09-09T07:15:00Z",
       durationS: 28.4,
       weightG: 18.5,
+      profile: "Recorded lever",
+      stopReason: "targetWeight",
     },
   });
   assert.equal(doc.shot_active, false);
@@ -185,6 +187,8 @@ test("post-shot fields populate from the completed shot", () => {
   assert.equal(doc.shot_started_at, "2026-09-09T07:15:00Z");
   assert.equal(doc.shot_duration_s, 28.4);
   assert.equal(doc.shot_weight_g, 18.5);
+  assert.equal(doc.shot_profile, "Recorded lever");
+  assert.equal(doc.last_shot_stop_reason, "targetWeight");
 });
 
 test("waterTankLevelToMilliliters matches the de1app lookup table", () => {
@@ -574,6 +578,7 @@ test("decaid api quiet endpoints fail silently", async () => {
   assert.equal(await api.fetchWorkflow(), null);
   assert.equal(await api.fetchProfiles(), null);
   assert.equal(await api.fetchMachineInfo(), null);
+  assert.equal(await api.fetchLatestShot(), null);
   assert.equal(await api.fetchCollectionCount("/api/v1/shots?limit=1", "espresso"), null);
   assert.deepEqual(logs, []);
 });

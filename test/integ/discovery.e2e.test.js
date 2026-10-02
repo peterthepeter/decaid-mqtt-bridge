@@ -25,6 +25,9 @@ test("Home Assistant discovery publishes one retained device with stable entitie
     assert.ok(payloads.every((payload) => payload.device.identifiers[0] === "abc12345"));
     assert.equal(new Set(payloads.map((payload) => payload.unique_id)).size, payloads.length);
     assert.ok(discovery.some((message) => message.topic === "homeassistant/sensor/de1plus_abc12345_pressure/config"));
+    const shotProfile = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_shot_profile");
+    assert.equal(shotProfile.state_topic, "de1plus/abc12345/state");
+    assert.equal(shotProfile.value_template, "{{ value_json.shot_profile | default(None) }}");
 
     const profile = payloads.find((payload) => payload.unique_id === "de1plus_abc12345_profile_select");
     assert.deepEqual(profile.options, ["Medium", "Lever"]);

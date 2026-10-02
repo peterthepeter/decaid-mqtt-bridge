@@ -9,15 +9,18 @@ broker. It is wire-compatible with the de1app MQTT plugin
 Home Assistant, Node-RED, and custom MQTT consumers can keep using the same
 base message format.
 
-Version 0.2.6 has been tested on a real Decaid tablet and Home Assistant
-installation. Automated unit and integration tests cover the MQTT connection,
-state publishing, discovery, commands, reconnect behavior, and shot events.
+Version 0.2.7 preserves completed-shot results when Decaid stores a shot before
+the machine leaves Espresso. It restores the last shot on plugin start and
+publishes its recorded profile alongside an explicit timestamp. Automated unit
+and integration tests cover the MQTT connection, state publishing, discovery,
+commands, reconnect behavior, and shot events.
 
 ## Features
 
 - Retained MQTT state with machine, scale, temperature, water, profile, usage,
   and shot telemetry
-- Live shot weight plus final yield, shot ID, start time, and duration
+- Live shot weight plus final yield, shot ID, start time, duration, and recorded profile
+- Restore the latest completed shot after a plugin restart
 - Optional Home Assistant MQTT discovery with one grouped Decent device
 - Wake, sleep, steam-heater, profile-selection, and safe stop controls
 - Automatic MQTT 5 to MQTT 3.1.1 fallback, connection verification, and

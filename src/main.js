@@ -9,6 +9,7 @@ import { createStorageAdapter } from "./storage.js";
 import { createDecaidApi } from "./decaid-api.js";
 import { buildDiscoveryMessages, DISCOVERY_TOPICS_KEY } from "./discovery.js";
 import { createShotEventMapper } from "./shot-events.js";
+import { readCompletedShot } from "./shot-record.js";
 
 export const PLUGIN_ID = "mqtt.reaplugin";
 const REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
@@ -51,6 +52,7 @@ export function createPlugin(host) {
     steamingCount: 0,
     shotWeightG: null,
     shot: null,
+    shotGeneration: 0,
     lastState: null,
     lastSubstate: null,
     lastPublishedStateJson: null,
@@ -66,7 +68,10 @@ export function createPlugin(host) {
       id: active ? null : runtime.shot?.id ?? null,
       startedAt: active ? null : runtime.shot?.startedAt ?? null,
       durationS: active ? null : runtime.shot?.durationS ?? null,
-      weightG: active ? runtime.shotWeightG : runtime.shot?.weightG ?? runtime.shotWeightG,
+      weightG: active ? runtime.shotWeightG : runtime.shot?.id
+        ? runtime.shot.weightG : runtime.shot?.weightG ?? runtime.shotWeightG,
+      profile: active ? null : runtime.shot?.profile ?? null,
+      stopReason: active ? null : runtime.shot?.stopReason ?? null,
     };
   }
 
@@ -176,6 +181,11 @@ export function createPlugin(host) {
     if (settings) runtime.settings = settings;
     if (Array.isArray(devices)) applyDevices(devices);
     if (machineInfo && typeof machineInfo === "object") runtime.metadata = machineInfo;
+    if (fullStatic && !runtime.shot) {
+      const generation = runtime.shotGeneration;
+      const latest = await api.fetchLatestShot();
+      if (latest?.id && !runtime.shot) await loadStoredShot(latest.id, generation);
+    }
     if (refreshCounts) await refreshUsageCounts();
     runtime.discoverySignature = JSON.stringify({
       metadata: runtime.metadata,
@@ -240,10 +250,14 @@ export function createPlugin(host) {
     const state = mapState(rawState);
     const substate = mapSubstate(rawSubstate) ?? "";
     const active = isShotActive(state, substate);
+    const wasActive = isShotActive(mapState(runtime.lastState), mapSubstate(runtime.lastSubstate));
     const transitioned = rawState !== runtime.lastState || rawSubstate !== runtime.lastSubstate;
     runtime.lastState = rawState;
     runtime.lastSubstate = rawSubstate;
-    if (active && runtime.shot?.active !== true) {
+    // shotStored can arrive before the machine leaves Espresso. Only a real
+    // state transition may start another shot and clear the completed record.
+    if (active && !wasActive) {
+      runtime.shotGeneration += 1;
       runtime.shot = { active: true };
       runtime.shotWeightG = null;
     } else if (!active && runtime.shot?.active === true) {
@@ -260,27 +274,23 @@ export function createPlugin(host) {
   async function onShotStored(payload) {
     const shotId = payload?.id;
     if (!shotId) return;
-    const record = await api.fetchShotRecord(shotId);
-    if (!record) return;
-    const measurements = Array.isArray(record.measurements) ? record.measurements : [];
-    const first = measurements[0];
-    const last = measurements[measurements.length - 1];
-    let durationS = null;
-    const startMs = new Date(first?.machine?.timestamp).getTime();
-    const endMs = new Date(last?.machine?.timestamp).getTime();
-    if (Number.isFinite(startMs) && Number.isFinite(endMs)) durationS = Math.max(0, (endMs - startMs) / 1000);
-    const actualYield = record.annotations?.actualYield;
-    const finalWeight = Number.isFinite(actualYield) ? actualYield : last?.scale?.weight ?? null;
-    if (!Number.isFinite(actualYield)) log(`shot ${shotId} has no actualYield; using the last scale sample`);
-    runtime.shot = {
-      active: false,
-      id: record.id ?? shotId,
-      startedAt: record.timestamp ?? null,
-      durationS,
-      weightG: finalWeight,
-    };
-    runtime.shotWeightG = finalWeight;
+    if (!await loadStoredShot(shotId, runtime.shotGeneration)) return;
     await enqueuePublish({ refreshStatic: true, refreshCounts: true });
+  }
+
+  async function loadStoredShot(shotId, generation) {
+    const record = await api.fetchShotRecord(shotId);
+    if (!record || stopping) return false;
+    if (generation !== runtime.shotGeneration) {
+      log(`shot ${shotId} ignored: a newer espresso shot has started`);
+      return false;
+    }
+    if (!Number.isFinite(record.annotations?.actualYield)) {
+      log(`shot ${shotId} has no actualYield; using the last usable scale sample`);
+    }
+    runtime.shot = readCompletedShot(record, shotId);
+    runtime.shotWeightG = runtime.shot.weightG;
+    return true;
   }
 
   function addStream(options) {

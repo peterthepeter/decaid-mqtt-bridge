@@ -77,7 +77,13 @@ values:
 - shot sequencer: `shot_phase`, `last_shot_stop_reason`,
   `scale_lost_during_shot`;
 - completed-shot detail: `shot_active`, `shot_id`, `shot_started_at`,
-  `shot_duration_s`, `shot_weight_g`.
+  `shot_duration_s`, `shot_weight_g`, `shot_profile`.
+
+`shot_profile` is the profile recorded with the completed shot, independent of
+the currently selected `profile`. Completed start timestamps include a timezone.
+The latest stored shot is restored on plugin start. A stored shot can finish
+before the machine leaves Espresso; subsequent samples in that same Espresso
+state do not reopen it. Steam, rinse, and sleep preserve the completed details.
 
 Dynamic numeric samples use a state-dependent cadence: 1 second during active
 operations, 2 seconds while heating, and 5 seconds while awake and idle.

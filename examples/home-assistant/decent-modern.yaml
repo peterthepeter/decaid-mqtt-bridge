@@ -1,0 +1,504 @@
+type: custom:bubble-card
+card_type: pop-up
+popup_mode: adaptive-dialog
+with_bottom_offset: true
+hash: '#decent'
+name: Decent DE1 XXL
+icon: mdi:coffee-maker-outline
+show_header: true
+width_desktop: 440px
+bg_color: '#191919'
+bg_opacity: '100'
+styles: |
+  ha-card {
+    --bubble-pop-up-border-radius: 18px;
+    --bubble-pop-up-background-color: #191919;
+    --bubble-main-background-color: #202020;
+    --bubble-icon-background-color: transparent;
+    --bubble-accent-color: #e5e5e5;
+    --primary-text-color: #e5e5e5;
+    --secondary-text-color: #a6a6a6;
+    --vertical-stack-card-gap: 8px;
+  }
+  .bubble-name { font-size: 13px !important; font-weight: 400 !important; }
+  .bubble-icon { color: #e5e5e5 !important; }
+  .bubble-button-card-container, .bubble-button-background { border-radius: 14px !important; }
+  .bubble-close-button { border-radius: 14px !important; }
+  .bubble-icon-container {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  ha-card { --bubble-border-radius: 14px; }
+cards:
+  - type: horizontal-stack
+    cards:
+      - type: custom:bubble-card
+        card_type: button
+        button_type: switch
+        entity: switch.socketzigbee_5
+        name: Netzstrom
+        icon: mdi:power-socket-de
+        show_state: true
+        scrolling_effect: false
+        tap_action:
+          action: toggle
+          confirmation:
+            text: Netzstrom der Espressomaschine wirklich umschalten?
+        double_tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+        styles: |
+          ha-card {
+            --bubble-main-background-color: #202020;
+            --bubble-border-radius: 14px;
+            --bubble-border: none;
+            --bubble-box-shadow: none;
+            --primary-text-color: #e5e5e5;
+            --secondary-text-color: #a6a6a6;
+          }
+          .bubble-button-background { opacity: 1 !important; background: #202020 !important; }
+          .bubble-button-card-container { height: 44px !important; min-height: 44px !important; }
+          .bubble-icon-container {
+            width: 30px !important;
+            min-width: 30px !important;
+            height: 30px !important;
+            margin-left: 10px !important;
+            border-radius: 9px !important;
+            background: transparent !important;
+          }
+          .bubble-icon {
+            --mdc-icon-size: 18px;
+            color: ${hass.states['switch.socketzigbee_5']?.state === 'on' ? '#d98b83' : '#e5e5e5'} !important;
+          }
+          .bubble-name-container {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+            margin: 10px 14px 10px 8px !important;
+          }
+          .bubble-name { color: #a6a6a6 !important; font-size: 13px !important; font-weight: 400 !important; }
+          .bubble-state { color: #e5e5e5 !important; font-size: 13px !important; opacity: 1 !important; text-align: right; }
+          ${(() => { const el = card.querySelector('.bubble-state'); if (el) el.textContent = hass.states['switch.socketzigbee_5']?.state === 'on' ? 'Ein' : 'Aus'; return ''; })()}
+      - type: custom:bubble-card
+        card_type: button
+        button_type: state
+        entity: sensor.decent_espresso_de1_de1_tablet_battery
+        name: Tablet-Akku
+        icon: mdi:tablet-cellphone
+        show_state: true
+        scrolling_effect: false
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+        styles: |
+          ha-card {
+            --bubble-main-background-color: #202020;
+            --bubble-border-radius: 14px;
+            --bubble-border: none;
+            --bubble-box-shadow: none;
+            --primary-text-color: #e5e5e5;
+            --secondary-text-color: #a6a6a6;
+          }
+          .bubble-button-background { opacity: 1 !important; background: #202020 !important; }
+          .bubble-button-card-container { height: 44px !important; min-height: 44px !important; }
+          .bubble-icon-container {
+            width: 30px !important;
+            min-width: 30px !important;
+            height: 30px !important;
+            margin-left: 10px !important;
+            border-radius: 9px !important;
+            background: transparent !important;
+          }
+          .bubble-icon {
+            --mdc-icon-size: 18px;
+            color: ${(() => { const raw = hass.states['sensor.decent_espresso_de1_de1_tablet_battery']?.state; const n = Number(raw); return raw == null || raw.trim() === '' || !Number.isFinite(n) ? '#a6a6a6' : n < 15 ? '#d98b83' : n < 30 ? '#d6c49b' : '#a8c99f'; })()} !important;
+          }
+          .bubble-name-container {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+            margin: 10px 14px 10px 8px !important;
+          }
+          .bubble-name { color: #a6a6a6 !important; font-size: 13px !important; font-weight: 400 !important; }
+          .bubble-state { color: #e5e5e5 !important; font-size: 13px !important; opacity: 1 !important; text-align: right; font-variant-numeric: tabular-nums; }
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: switch.socketzigbee_5
+        state: 'on'
+    card:
+      type: custom:bubble-card
+      card_type: button
+      button_type: state
+      entity: sensor.decent_espresso_de1_de1_state
+      name: Status
+      icon: mdi:coffee-maker-outline
+      show_name: false
+      show_state: true
+      scrolling_effect: false
+      tap_action:
+        action: none
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      styles: |
+        ha-card {
+          --bubble-main-background-color: #202020;
+          --bubble-border-radius: 14px;
+          --bubble-border: none;
+          --bubble-box-shadow: none;
+          color: #e5e5e5;
+        }
+        .bubble-button-card-container { background: #202020 !important; min-height: 48px; }
+        .bubble-icon-container {
+          width: 30px !important;
+          min-width: 30px !important;
+          height: 30px !important;
+          margin-left: 10px !important;
+          border-radius: 9px !important;
+          background: transparent !important;
+        }
+        .bubble-icon {
+          --mdc-icon-size: 18px;
+          color: ${(() => { const connected = hass.states['binary_sensor.decent_espresso_de1_de1_machine_connected']?.state === 'on'; const s = hass.states['sensor.decent_espresso_de1_de1_state']?.state; const sub = hass.states['sensor.decent_espresso_de1_de1_substate']?.state; if (!connected || s === 'FatalError') return '#d98b83'; if (s === 'Refill' || (s === 'Idle' && sub === 'heating')) return '#d6c49b'; if (['Espresso','Steam','HotWater','HotWaterRinse','SteamRinse'].includes(s)) return '#e5e5e5'; if (s === 'Idle' && sub === 'ready') return '#a8c99f'; return '#a6a6a6'; })()} !important;
+        }
+        .bubble-name-container { flex: 1; min-width: 0; margin: 10px 4px 10px 8px !important; }
+        .bubble-state { color: #e5e5e5 !important; font-size: 13px !important; opacity: 1 !important; text-align: left; }
+        ${(() => { const el = card.querySelector('.bubble-state'); if (!el) return ''; const connected = hass.states['binary_sensor.decent_espresso_de1_de1_machine_connected']?.state === 'on'; const s = hass.states['sensor.decent_espresso_de1_de1_state']?.state; const sub = hass.states['sensor.decent_espresso_de1_de1_substate']?.state; if (!connected) el.textContent = 'Nicht verbunden'; else if (s === 'Idle' && sub === 'heating') el.textContent = 'Heizt auf'; else if (s === 'Idle' && sub === 'ready') el.textContent = 'Bereit'; else el.textContent = ({Init:'Startet',Busy:'Beschäftigt',Idle:'Bereit',SchedIdle:'Wartet',Sleep:'Standby',Espresso:'Espressobezug',HotWater:'Heißwasser',HotWaterRinse:'Spülen',Steam:'Dampf',SteamRinse:'Dampfspülung',SkipToNext:'Nächster Schritt',Clean:'Reinigung',Descale:'Entkalkung',ShortCal:'Kalibrierung',SelfTest:'Selbsttest',AirPurge:'Entlüften',Refill:'Wasser nachfüllen',FatalError:'Maschinenfehler',FWUpgrade:'Firmware-Update'})[s] ?? (s && !['unknown','unavailable'].includes(s) ? s : '—'); return ''; })()}
+        .bubble-sub-button { min-width: 0; height: 32px; padding: 0 9px; border-radius: 9px; background: transparent !important; box-shadow: none; }
+        .bubble-sub-button-name-container { color: #e5e5e5 !important; font-size: 13px !important; font-weight: 400 !important; }
+        .bubble-sub-button-icon { --mdc-icon-size: 17px; }
+        .bubble-sub-button-1 .bubble-sub-button-icon { color: ${hass.states['switch.decent_espresso_de1_de1_on']?.state === 'on' ? '#d98b83' : '#e5e5e5'} !important; }
+        .bubble-sub-button-2 .bubble-sub-button-icon { color: ${hass.states['switch.decent_espresso_de1_de1_steam_heater_on']?.state === 'on' ? '#d98b83' : '#e5e5e5'} !important; }
+        @media (max-width: 360px) { .bubble-sub-button { padding: 0 6px; } .bubble-icon-container { display: none; } }
+      sub_button:
+        main:
+          - entity: switch.decent_espresso_de1_de1_on
+            name: Maschine
+            icon: mdi:power
+            show_name: true
+            show_icon: true
+            show_state: false
+            show_background: false
+            state_background: false
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+          - entity: switch.decent_espresso_de1_de1_steam_heater_on
+            name: Dampf
+            icon: mdi:heat-wave
+            show_name: true
+            show_icon: true
+            show_state: false
+            show_background: false
+            state_background: false
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: switch.socketzigbee_5
+        state: 'on'
+      - condition: state
+        entity: binary_sensor.decent_espresso_de1_de1_machine_connected
+        state: 'on'
+      - condition: state
+        entity: sensor.decent_espresso_de1_de1_state
+        state_not: 'Sleep'
+    card:
+      type: vertical-stack
+      cards:
+        - type: custom:bubble-card
+          card_type: separator
+          name: Rezept
+          icon: mdi:chart-bell-curve
+          styles: |
+            .bubble-name { color: #a6a6a6; font-size: 12px !important; font-weight: 400 !important; }
+            .bubble-line { background: #a6a6a6; opacity: .12; }
+            .bubble-icon { color: #a6a6a6 !important; --mdc-icon-size: 16px; }
+        - type: custom:bubble-card
+          card_type: select
+          entity: select.decent_espresso_de1_de1_profile
+          name: Profil
+          icon: mdi:chart-bell-curve
+          show_state: true
+          scrolling_effect: false
+          styles: |
+            ha-card { --bubble-main-background-color: #202020; --bubble-border-radius: 14px; --bubble-border: none; --bubble-box-shadow: none; color: #e5e5e5; }
+            .bubble-select-card-container { background: #202020 !important; min-height: 48px; }
+            .bubble-icon-container { background: transparent !important; border-radius: 9px !important; }
+            .bubble-icon { color: #e5e5e5 !important; --mdc-icon-size: 18px; }
+            .bubble-name { color: #a6a6a6 !important; font-size: 13px !important; font-weight: 400 !important; }
+            .bubble-state { color: #e5e5e5 !important; font-size: 13px !important; opacity: 1 !important; }
+        - type: custom:bubble-card
+          card_type: sub-buttons
+          rows: 1
+          sub_button:
+            bottom:
+              - group:
+                  - entity: sensor.decent_espresso_de1_de1_target_dose
+                    name: Dosis
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_target_yield
+                    name: Zielmenge
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                buttons_layout: inline
+                justify_content: fill
+            bottom_layout: rows
+          styles: |
+            ha-card { --bubble-main-background-color: #202020; --bubble-border-radius: 14px; --bubble-border: none; --bubble-box-shadow: none; --bubble-sub-button-background-color: transparent; color: #e5e5e5; }
+            .bubble-container { height: 52px !important; min-height: 0 !important; }
+            .bubble-sub-button-bottom-container { top: 0 !important; bottom: 0 !important; height: 100% !important; margin: 0 8px !important; gap: 0 !important; align-items: stretch !important; }
+            .bubble-sub-button-group { width: 100%; height: 44px !important; margin: 0 !important; }
+            .bubble-sub-button-group > .bubble-sub-button:not(:last-child) { border-right: 1px solid #343434; }
+            .bubble-sub-button { background: transparent !important; box-shadow: none !important; border-radius: 0; height: 44px !important; padding: 2px 8px !important; }
+            .bubble-sub-button-name-container { white-space: pre-line !important; text-align: center; font-size: 13px !important; font-weight: 400 !important; line-height: 1.5; color: #e5e5e5; font-variant-numeric: tabular-nums; }
+            ${(() => { const el = card.querySelector('.bubble-sub-button-1 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_target_dose']?.state; const n = Number(raw); el.textContent = 'Dosis\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' g' : '—'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-2 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_target_yield']?.state; const n = Number(raw); el.textContent = 'Zielmenge\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' g' : '—'); return ''; })()}
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: switch.socketzigbee_5
+        state: 'on'
+      - condition: state
+        entity: binary_sensor.decent_espresso_de1_de1_machine_connected
+        state: 'on'
+      - condition: state
+        entity: sensor.decent_espresso_de1_de1_state
+        state_not: 'Sleep'
+    card:
+      type: vertical-stack
+      cards:
+        - type: custom:bubble-card
+          card_type: separator
+          name: Vorbereitung
+          icon: mdi:coffee-outline
+          styles: |
+            .bubble-name { color: #a6a6a6; font-size: 12px !important; font-weight: 400 !important; }
+            .bubble-line { background: #a6a6a6; opacity: .12; }
+            .bubble-icon { color: #a6a6a6 !important; --mdc-icon-size: 16px; }
+        - type: custom:bubble-card
+          card_type: sub-buttons
+          rows: 3
+          sub_button:
+            bottom:
+              - group:
+                  - entity: sensor.decent_espresso_de1_de1_water_level
+                    name: Tank
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_refill_threshold
+                    name: Nachfüllen bei
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                buttons_layout: inline
+                justify_content: fill
+              - group:
+                  - entity: sensor.decent_espresso_de1_de1_head_temperature
+                    name: Brühgruppe
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_steam_temperature
+                    name: Dampf
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                buttons_layout: inline
+                justify_content: fill
+              - group:
+                  - entity: binary_sensor.decent_espresso_de1_de1_scale_connected
+                    name: Waage
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_scale_battery
+                    name: Waagen-Akku
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                buttons_layout: inline
+                justify_content: fill
+            bottom_layout: rows
+          styles: |
+            ha-card { --bubble-main-background-color: #202020; --bubble-border-radius: 14px; --bubble-border: none; --bubble-box-shadow: none; --bubble-sub-button-background-color: transparent; color: #e5e5e5; }
+            .bubble-container { height: 156px !important; min-height: 0 !important; }
+            .bubble-sub-button-bottom-container { top: 0 !important; bottom: 0 !important; height: 100% !important; margin: 0 8px !important; gap: 0 !important; align-items: stretch !important; }
+            .bubble-sub-button-group { display: flex; width: 100%; flex: 1 0 0 !important; min-height: 52px; margin: 0 !important; border-bottom: 1px solid #343434; }
+            .bubble-sub-button-group:last-child { border-bottom: none; }
+            .bubble-sub-button-group > .bubble-sub-button:not(:last-child) { border-right: 1px solid #343434; }
+            .bubble-sub-button-5 { border-right: ${hass.states['binary_sensor.decent_espresso_de1_de1_scale_connected']?.state === 'on' ? '1px solid #343434' : 'none'} !important; }
+            .bubble-sub-button-6 { display: ${hass.states['binary_sensor.decent_espresso_de1_de1_scale_connected']?.state === 'on' ? 'flex' : 'none'} !important; }
+            .bubble-sub-button-group > .bubble-sub-button { flex: 1 1 0 !important; width: 0 !important; min-width: 0; }
+            .bubble-sub-button { background: transparent !important; box-shadow: none !important; border-radius: 0; height: auto !important; padding: 5px 4px !important; }
+            .bubble-sub-button-name-container { white-space: pre-line !important; text-align: center; font-size: 13px !important; font-weight: 400 !important; line-height: 1.5; color: #e5e5e5; font-variant-numeric: tabular-nums; }
+            ${(() => { const el = card.querySelector('.bubble-sub-button-1 .bubble-sub-button-name-container'); if (!el) return ''; const value = id => { const raw = hass.states[id]?.state; const n = Number(raw); return raw != null && raw.trim() !== '' && Number.isFinite(n) ? n : null; }; const ml = value('sensor.decent_espresso_de1_de1_water_level'); const mm = value('sensor.decent_espresso_de1_de1_water_level_height'); const threshold = value('sensor.decent_espresso_de1_de1_refill_threshold'); el.textContent = 'Tank\n' + (ml == null ? '—' : ml.toLocaleString('de-DE', {maximumFractionDigits: 0}) + ' mL') + (mm == null ? '' : ' · ' + mm.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mm'); el.style.setProperty('color', mm != null && threshold != null && mm <= threshold ? '#d98b83' : '#e5e5e5', 'important'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-2 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_refill_threshold']?.state; const n = Number(raw); el.textContent = 'Nachfüllen bei\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mm' : '—'); el.style.setProperty('color', '#d6c49b', 'important'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-3 .bubble-sub-button-name-container'); if (!el) return ''; const fmt = id => { const raw = hass.states[id]?.state; const n = Number(raw); return raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' °C' : '—'; }; el.textContent = 'Brühgruppe\n' + fmt('sensor.decent_espresso_de1_de1_head_temperature') + ' · Ziel ' + fmt('sensor.decent_espresso_de1_de1_target_group_temperature'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-4 .bubble-sub-button-name-container'); if (!el) return ''; if (hass.states['switch.decent_espresso_de1_de1_steam_heater_on']?.state !== 'on') { el.textContent = 'Dampf\nAus'; return ''; } const fmt = id => { const raw = hass.states[id]?.state; const n = Number(raw); return raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {maximumFractionDigits: 0}) + ' °C' : '—'; }; el.textContent = 'Dampf\n' + fmt('sensor.decent_espresso_de1_de1_steam_temperature') + ' · Ziel ' + fmt('sensor.decent_espresso_de1_de1_target_steam_temperature'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-5 .bubble-sub-button-name-container'); if (!el) return ''; const connected = hass.states['binary_sensor.decent_espresso_de1_de1_scale_connected']?.state; const raw = hass.states['sensor.decent_espresso_de1_de1_scale_weight']?.state; const n = Number(raw); el.textContent = 'Waage\n' + (connected === 'on' ? (raw != null && raw.trim() !== '' && Number.isFinite(n) ? 'Verbunden · ' + n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' g' : 'Verbunden') : connected === 'off' ? 'Nicht verbunden' : '—'); el.style.setProperty('color', connected === 'on' ? '#a8c99f' : connected === 'off' ? '#d98b83' : '#a6a6a6', 'important'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-6 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_scale_battery']?.state; const n = Number(raw); el.textContent = 'Waagen-Akku\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {maximumFractionDigits: 0}) + ' %' : '—'); el.style.setProperty('color', !Number.isFinite(n) ? '#a6a6a6' : n < 15 ? '#d98b83' : n < 30 ? '#d6c49b' : '#e5e5e5', 'important'); return ''; })()}
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: switch.socketzigbee_5
+        state: 'on'
+      - condition: state
+        entity: binary_sensor.decent_espresso_de1_de1_machine_connected
+        state: 'on'
+      - condition: state
+        entity: binary_sensor.decent_espresso_de1_de1_shot_active
+        state: 'off'
+      - condition: state
+        entity: sensor.decent_espresso_de1_de1_shot_started_at
+        state_not: 'unknown'
+      - condition: state
+        entity: sensor.decent_espresso_de1_de1_shot_started_at
+        state_not: 'unavailable'
+    card:
+      type: vertical-stack
+      cards:
+        - type: custom:bubble-card
+          card_type: separator
+          name: Letzter Bezug
+          icon: mdi:history
+          styles: |
+            .bubble-name { color: #a6a6a6; font-size: 12px !important; font-weight: 400 !important; white-space: pre-line !important; line-height: 1.5; }
+            .bubble-separator { min-height: 44px; }
+            ${(() => { const el = card.querySelector('.bubble-name'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_shot_started_at']?.state; const date = new Date(raw ?? ''); const valid = Number.isFinite(date.getTime()); const when = valid ? new Intl.DateTimeFormat('de-DE', {timeZone: hass.config?.time_zone || 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}).format(date) : ''; const profile = hass.states['sensor.decent_espresso_de1_de1_shot_profile']?.state; el.textContent = 'Letzter Bezug' + (when ? ' · ' + when : '') + (profile && !['unknown','unavailable'].includes(profile) ? '\n' + profile : ''); return ''; })()}
+            .bubble-line { background: #a6a6a6; opacity: .12; }
+            .bubble-icon { color: #a6a6a6 !important; --mdc-icon-size: 16px; }
+        - type: custom:bubble-card
+          card_type: sub-buttons
+          rows: 1
+          sub_button:
+            bottom:
+              - group:
+                  - entity: sensor.decent_espresso_de1_de1_shot_weight
+                    name: Ergebnis
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_shot_duration
+                    name: Dauer
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                  - entity: sensor.decent_espresso_de1_de1_last_shot_stop_reason
+                    name: Ende
+                    show_name: true
+                    show_icon: false
+                    show_state: false
+                    show_background: false
+                    fill_width: true
+                    tap_action:
+                      action: more-info
+                buttons_layout: inline
+                justify_content: fill
+            bottom_layout: rows
+          styles: |
+            ha-card { --bubble-main-background-color: #202020; --bubble-border-radius: 14px; --bubble-border: none; --bubble-box-shadow: none; --bubble-sub-button-background-color: transparent; color: #e5e5e5; }
+            .bubble-container { height: 60px !important; min-height: 0 !important; }
+            .bubble-sub-button-bottom-container { top: 0 !important; bottom: 0 !important; height: 100% !important; margin: 0 8px !important; gap: 0 !important; align-items: stretch !important; }
+            .bubble-sub-button-group { width: 100%; height: 52px !important; margin: 0 !important; }
+            .bubble-sub-button-group > .bubble-sub-button { flex: 1 1 0 !important; width: 0 !important; min-width: 0; }
+            .bubble-sub-button-group > .bubble-sub-button:not(:last-child) { border-right: 1px solid #343434; }
+            .bubble-sub-button { background: transparent !important; box-shadow: none !important; border-radius: 0; height: 52px !important; padding: 2px 4px !important; }
+            .bubble-sub-button-name-container { white-space: pre-line !important; text-align: center; font-size: 12px !important; font-weight: 400 !important; line-height: 1.5; color: #e5e5e5; font-variant-numeric: tabular-nums; }
+            ${(() => { const el = card.querySelector('.bubble-sub-button-1 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_shot_weight']?.state; const n = Number(raw); el.textContent = 'Ergebnis\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) && n >= 0 ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' g' : '—'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-2 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_shot_duration']?.state; const n = Number(raw); el.textContent = 'Dauer\n' + (raw != null && raw.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' s' : '—'); return ''; })()}
+            ${(() => { const el = card.querySelector('.bubble-sub-button-3 .bubble-sub-button-name-container'); if (!el) return ''; const raw = hass.states['sensor.decent_espresso_de1_de1_last_shot_stop_reason']?.state; el.textContent = 'Ende\n' + (({targetWeight:'Zielgewicht',targetVolume:'Zielvolumen',machineEnded:'Profilende',apiStop:'HA gestoppt',appStop:'Tablet gestoppt',scaleLost:'Waage verloren',disconnected:'Verbindung weg',error:'Fehler'})[raw] ?? (raw && !['unknown','unavailable'].includes(raw) ? raw.replace(/_/g, ' ') : '—')); return ''; })()}
+
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: switch.socketzigbee_5
+        state: 'on'
+      - condition: state
+        entity: binary_sensor.decent_espresso_de1_de1_scale_lost_during_shot
+        state: 'on'
+    card:
+      type: custom:bubble-card
+      card_type: button
+      button_type: state
+      entity: binary_sensor.decent_espresso_de1_de1_scale_lost_during_shot
+      name: Waage während des Bezugs verloren
+      icon: mdi:scale-off
+      show_state: false
+      scrolling_effect: false
+      tap_action:
+        action: more-info
+      styles: |
+        ha-card { --bubble-main-background-color: #202020; --bubble-border-radius: 14px; --bubble-border: none; --bubble-box-shadow: none; }
+        .bubble-button-background { opacity: 1 !important; background: #202020 !important; }
+        .bubble-button-card-container { min-height: 44px; }
+        .bubble-icon-container { background: transparent !important; border-radius: 9px !important; }
+        .bubble-icon, .bubble-name { color: #d98b83 !important; }
+        .bubble-name { font-size: 13px !important; font-weight: 400 !important; }
