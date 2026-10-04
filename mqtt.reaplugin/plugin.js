@@ -12902,7 +12902,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.7" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.3.0" }
     };
   }
   function stateEntity(config, metadata, component, definition) {
@@ -12928,6 +12928,19 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         return message;
       })
     ];
+    const curve = common(config, metadata, "Last Shot Curve", "last_shot_curve");
+    delete curve.availability;
+    messages.push({
+      topic: topicFor(config, "sensor", "last_shot_curve"),
+      payload: {
+        ...curve,
+        state_topic: `${config.topicPrefix}/shot/last`,
+        value_template: "{{ value_json.shot_id }}",
+        json_attributes_topic: `${config.topicPrefix}/shot/last`,
+        icon: "mdi:chart-line",
+        qos: 1
+      }
+    });
     for (const [name2, key, field, payloadOn, payloadOff, icon] of [
       ["On", "switch", "wake_state", "wake", "sleep", "mdi:coffee-maker"],
       ["Steam Heater On", "steam_switch", "steam_state", "steam_on", "steam_off", "mdi:heat-wave"]
@@ -13030,6 +13043,59 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     return typeof value === "number" && Number.isFinite(value) && value >= 0;
   }
 
+  // src/shot-curve.js
+  var MAX_CURVE_POINTS = 512;
+  var FIELDS = {
+    pressure: ["machine", "pressure"],
+    flow: ["machine", "flow"],
+    target_pressure: ["machine", "targetPressure"],
+    target_flow: ["machine", "targetFlow"],
+    temperature: ["machine", "mixTemperature"],
+    target_temperature: ["machine", "targetMixTemperature"],
+    group_temperature: ["machine", "groupTemperature"],
+    weight: ["scale", "weight"],
+    weight_flow: ["scale", "weightFlow"]
+  };
+  function readShotCurve(record, fallbackId) {
+    if (!Array.isArray(record?.measurements)) return null;
+    const samples = [];
+    let previousMs = -Infinity;
+    for (const sample of record.measurements) {
+      const machine = sample?.machine;
+      if (mapState(machine?.state?.state ?? machine?.state) !== "Espresso") continue;
+      const ms = typeof machine.timestamp === "string" ? Date.parse(machine.timestamp) : NaN;
+      if (!Number.isFinite(ms) || ms <= previousMs) continue;
+      samples.push({ sample, ms });
+      previousMs = ms;
+    }
+    if (samples.length < 2) return null;
+    if (!samples.some(({ sample }) => Number.isFinite(sample.machine.pressure) || Number.isFinite(sample.machine.flow))) return null;
+    const shot = readCompletedShot(record, fallbackId);
+    if (typeof shot.id !== "string" || !shot.id) return null;
+    const startMs = samples[0].ms;
+    const count = Math.min(samples.length, MAX_CURVE_POINTS);
+    const selected = Array.from({ length: count }, (_, i) => samples[Math.round(i * (samples.length - 1) / (count - 1))]);
+    const series = Object.fromEntries(Object.entries(FIELDS).map(([name2, [section, field]]) => [
+      name2,
+      selected.map(({ sample }) => {
+        const value = sample[section]?.[field];
+        return Number.isFinite(value) && (name2 !== "weight" || value >= 0) ? Math.round(value * 100) / 100 : null;
+      })
+    ]));
+    return {
+      schema_version: 1,
+      shot_id: shot.id,
+      started_at: shot.startedAt,
+      profile: shot.profile,
+      duration_s: (samples[samples.length - 1].ms - startMs) / 1e3,
+      yield_g: shot.weightG,
+      stop_reason: shot.stopReason,
+      source_samples: samples.length,
+      time_s: selected.map(({ ms }) => (ms - startMs) / 1e3),
+      ...series
+    };
+  }
+
   // src/main.js
   var PLUGIN_ID = "mqtt.reaplugin";
   var REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
@@ -13073,6 +13139,8 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       shotWeightG: null,
       shot: null,
       shotGeneration: 0,
+      shotCurve: null,
+      publishedShotCurve: null,
       lastState: null,
       lastSubstate: null,
       lastPublishedStateJson: null,
@@ -13144,6 +13212,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       if (refreshStatic) discoveryChanged = await refreshStaticData({ refreshCounts, fullStatic });
       if (!bridge?.connected) return;
       if (discovery || discoveryChanged) syncDiscovery();
+      publishShotCurve();
       const stateMessage = currentStateMessage();
       const stateJson = JSON.stringify(stateMessage);
       if (!force && stateJson === runtime.lastPublishedStateJson) return;
@@ -13153,6 +13222,17 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         if (error) log(`state publish failed: ${error?.message ?? error}`);
       });
       armHeartbeat();
+    }
+    function publishShotCurve() {
+      const curve = runtime.shotCurve;
+      if (!curve || !bridge?.connected || runtime.publishedShotCurve === curve) return;
+      runtime.publishedShotCurve = curve;
+      bridge.publish(`${config.topicPrefix}/shot/last`, curve, { qos: 1, retain: true }, (error) => {
+        if (error) {
+          if (runtime.publishedShotCurve === curve) runtime.publishedShotCurve = null;
+          log(`shot curve publish failed: ${error?.message ?? error}`);
+        }
+      });
     }
     function applyWorkflow(workflow) {
       runtime.workflow = workflow;
@@ -13281,6 +13361,8 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       }
       runtime.shot = readCompletedShot(record, shotId);
       runtime.shotWeightG = runtime.shot.weightG;
+      const curve = readShotCurve(record, shotId);
+      if (curve) runtime.shotCurve = curve;
       return true;
     }
     function addStream(options) {
@@ -13393,6 +13475,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         log
       });
       bridge.onConnectedHandler = () => {
+        runtime.publishedShotCurve = null;
         enqueuePublish({ refreshStatic: true, refreshCounts: true, discovery: true, fullStatic: true, force: true });
       };
       bridge.start();

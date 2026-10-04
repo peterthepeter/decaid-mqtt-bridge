@@ -10,6 +10,7 @@ import { createDecaidApi } from "./decaid-api.js";
 import { buildDiscoveryMessages, DISCOVERY_TOPICS_KEY } from "./discovery.js";
 import { createShotEventMapper } from "./shot-events.js";
 import { readCompletedShot } from "./shot-record.js";
+import { readShotCurve } from "./shot-curve.js";
 
 export const PLUGIN_ID = "mqtt.reaplugin";
 const REMEMBERED_STEAM_TEMPERATURE_KEY = "rememberedSteamTemperature";
@@ -53,6 +54,8 @@ export function createPlugin(host) {
     shotWeightG: null,
     shot: null,
     shotGeneration: 0,
+    shotCurve: null,
+    publishedShotCurve: null,
     lastState: null,
     lastSubstate: null,
     lastPublishedStateJson: null,
@@ -134,6 +137,7 @@ export function createPlugin(host) {
     if (refreshStatic) discoveryChanged = await refreshStaticData({ refreshCounts, fullStatic });
     if (!bridge?.connected) return;
     if (discovery || discoveryChanged) syncDiscovery();
+    publishShotCurve();
     const stateMessage = currentStateMessage();
     const stateJson = JSON.stringify(stateMessage);
     if (!force && stateJson === runtime.lastPublishedStateJson) return;
@@ -143,6 +147,18 @@ export function createPlugin(host) {
       if (error) log(`state publish failed: ${error?.message ?? error}`);
     });
     armHeartbeat();
+  }
+
+  function publishShotCurve() {
+    const curve = runtime.shotCurve;
+    if (!curve || !bridge?.connected || runtime.publishedShotCurve === curve) return;
+    runtime.publishedShotCurve = curve;
+    bridge.publish(`${config.topicPrefix}/shot/last`, curve, { qos: 1, retain: true }, (error) => {
+      if (error) {
+        if (runtime.publishedShotCurve === curve) runtime.publishedShotCurve = null;
+        log(`shot curve publish failed: ${error?.message ?? error}`);
+      }
+    });
   }
 
   function applyWorkflow(workflow) {
@@ -290,6 +306,8 @@ export function createPlugin(host) {
     }
     runtime.shot = readCompletedShot(record, shotId);
     runtime.shotWeightG = runtime.shot.weightG;
+    const curve = readShotCurve(record, shotId);
+    if (curve) runtime.shotCurve = curve;
     return true;
   }
 
@@ -407,6 +425,7 @@ export function createPlugin(host) {
       log,
     });
     bridge.onConnectedHandler = () => {
+      runtime.publishedShotCurve = null;
       enqueuePublish({ refreshStatic: true, refreshCounts: true, discovery: true, fullStatic: true, force: true });
     };
     bridge.start();

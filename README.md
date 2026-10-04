@@ -9,11 +9,10 @@ broker. It is wire-compatible with the de1app MQTT plugin
 Home Assistant, Node-RED, and custom MQTT consumers can keep using the same
 base message format.
 
-Version 0.2.7 preserves completed-shot results when Decaid stores a shot before
-the machine leaves Espresso. It restores the last shot on plugin start and
-publishes its recorded profile alongside an explicit timestamp. Automated unit
-and integration tests cover the MQTT connection, state publishing, discovery,
-commands, reconnect behavior, and shot events.
+Version 0.3.0 adds retained curves of the last recorded espresso shot, automatic
+Home Assistant sensor discovery, and a dashboard example for ApexCharts.
+The curve remains available through steaming, rinsing, sleep and new shot starts.
+Automated unit and integration tests cover data extraction and MQTT delivery.
 
 ## Features
 
@@ -21,6 +20,7 @@ commands, reconnect behavior, and shot events.
   and shot telemetry
 - Live shot weight plus final yield, shot ID, start time, duration, and recorded profile
 - Restore the latest completed shot after a plugin restart
+- Last espresso curves: pressure, flow, temperatures, weight and recorded targets
 - Optional Home Assistant MQTT discovery with one grouped Decent device
 - Wake, sleep, steam-heater, profile-selection, and safe stop controls
 - Automatic MQTT 5 to MQTT 3.1.1 fallback, connection verification, and
@@ -138,6 +138,21 @@ Remote start buttons are intentionally not exposed. On machines with an active
 Group Head Controller, Decaid can acknowledge a start request even though the
 firmware still requires physical confirmation. The Stop control remains
 available for an active beverage or rinse operation.
+
+## Last espresso curves in Home Assistant
+
+Enable MQTT discovery and update the Decaid plugin. The **Last Shot Curve**
+sensor appears automatically under the existing device. It holds the shot ID
+and aligned measurement arrays as attributes; no helpers or per-curve sensors
+are needed. The retained `{topic_prefix}/shot/last` topic is updated after a
+stored espresso shot and republished on MQTT reconnect. Startup restores the
+latest shot from Decaid. Steam, hot water, rinse and cleaning do not replace it.
+Invalid/empty curves keep the last usable curve.
+
+See [the German setup guide](examples/home-assistant/decent-shot-curve.md) and
+[the styled ApexCharts card](examples/home-assistant/decent-shot-curve.yaml).
+The curve sensor should be excluded from Recorder; the chart reads its current
+attributes directly and does not need HA history.
 
 ## Troubleshooting
 

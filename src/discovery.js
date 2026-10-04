@@ -88,7 +88,7 @@ function common(config, metadata, name, key, availabilityKind) {
     unique_id: entityId(config, key),
     availability: availability(config, availabilityKind),
     device: device(config, metadata),
-    origin: { name: "Decaid MQTT Bridge", sw_version: "0.2.7" },
+    origin: { name: "Decaid MQTT Bridge", sw_version: "0.3.0" },
   };
 }
 
@@ -116,6 +116,21 @@ export function buildDiscoveryMessages(config, metadata = {}, profileOptions = [
       return message;
     }),
   ];
+
+  // Historical data stays usable when the machine or tablet is offline.
+  const curve = common(config, metadata, "Last Shot Curve", "last_shot_curve");
+  delete curve.availability;
+  messages.push({
+    topic: topicFor(config, "sensor", "last_shot_curve"),
+    payload: {
+      ...curve,
+      state_topic: `${config.topicPrefix}/shot/last`,
+      value_template: "{{ value_json.shot_id }}",
+      json_attributes_topic: `${config.topicPrefix}/shot/last`,
+      icon: "mdi:chart-line",
+      qos: 1,
+    },
+  });
 
   for (const [name, key, field, payloadOn, payloadOff, icon] of [
     ["On", "switch", "wake_state", "wake", "sleep", "mdi:coffee-maker"],

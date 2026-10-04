@@ -1,0 +1,194 @@
+# Add as a manual dashboard card (or inside the existing Decent popup).
+# Rename the discovered Last Shot Curve entity to sensor.decaid_last_shot_curve,
+# or replace that entity ID throughout this file.
+# Requires ApexCharts Card and card-mod, already used by the dashboard.
+# Default window: 60 seconds. For longer recipes, change graph_span to e.g. 2min.
+type: custom:mod-card
+card_mod:
+  style: |
+    ha-card {
+      --shot-surface: #202020;
+      --shot-text: #e5e5e5;
+      --shot-muted: #a6a6a6;
+      --shot-divider: #343434;
+      --primary-text-color: var(--shot-text);
+      --secondary-text-color: var(--shot-muted);
+      --vertical-stack-card-gap: 0px;
+      background: var(--shot-surface);
+      border: 1px solid var(--shot-divider);
+      border-radius: 14px;
+      box-shadow: none;
+      overflow: hidden;
+    }
+card:
+  type: vertical-stack
+  cards:
+    - type: markdown
+      content: >-
+        {% set e = 'sensor.decaid_last_shot_curve' %}
+        {% set date = state_attr(e, 'started_at') %}
+        {% set duration = state_attr(e, 'duration_s') %}
+        {% set weight = state_attr(e, 'yield_g') %}
+        **Letzter Bezug**{% if date %} · {{ as_timestamp(date) | timestamp_custom('%d.%m. · %H:%M') }}{% endif %}
+
+        {% if state_attr(e, 'time_s') %}
+        {{ state_attr(e, 'profile') or 'Espresso' }} · {{ duration | float(0) | round(1) }} s{% if weight is number %} · {{ weight | round(1) }} g{% endif %}
+        {% else %}
+        Noch keine gespeicherten Bezugskurven verfügbar.
+        {% endif %}
+      card_mod:
+        style: |
+          ha-card {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #343434;
+            border-radius: 0;
+            box-shadow: none;
+            color: #a6a6a6;
+            font-size: 13px;
+          }
+          ha-markdown { padding: 12px 16px; }
+          strong { color: #e5e5e5; font-weight: 500; }
+    - type: conditional
+      conditions:
+        - condition: state
+          entity: sensor.decaid_last_shot_curve
+          state_not: unknown
+        - condition: state
+          entity: sensor.decaid_last_shot_curve
+          state_not: unavailable
+      card:
+        type: custom:apexcharts-card
+        graph_span: 1min
+        span:
+          start: hour
+        header:
+          show: false
+        show:
+          loading: false
+        update_delay: 100ms
+        cache: false
+        all_series_config:
+          type: line
+          curve: straight
+          stroke_width: 2
+          extend_to: false
+          float_precision: 2
+          show:
+            in_header: false
+            legend_value: false
+        apex_config:
+          chart:
+            height: 260
+            fontFamily: inherit
+            foreColor: '#a6a6a6'
+            background: transparent
+            toolbar:
+              show: false
+            zoom:
+              enabled: false
+            animations:
+              enabled: false
+          grid:
+            borderColor: '#343434'
+            strokeDashArray: 3
+          markers:
+            size: 0
+          legend:
+            position: bottom
+            fontSize: 12px
+          tooltip:
+            theme: dark
+            shared: true
+            intersect: false
+            x:
+              formatter: >-
+                EVAL:function(value) { const d = new Date(value); return
+                (d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000).toFixed(1) + ' s'; }
+          xaxis:
+            title:
+              text: Bezugszeit · Sekunden
+              style:
+                fontSize: 11px
+                fontWeight: 400
+            axisBorder:
+              show: false
+            axisTicks:
+              show: false
+            labels:
+              datetimeUTC: false
+              formatter: >-
+                EVAL:function(value, timestamp) { const d = new Date(timestamp); return
+                String(d.getMinutes() * 60 + d.getSeconds()); }
+        yaxis:
+          - id: pressure
+            min: 0
+            max: '~10'
+            decimals: 1
+            apex_config:
+              tickAmount: 4
+              title:
+                text: bar
+                style:
+                  color: '#a8c99f'
+                  fontWeight: 400
+          - id: flow
+            min: 0
+            max: '~6'
+            opposite: true
+            decimals: 1
+            apex_config:
+              tickAmount: 4
+              title:
+                text: mL/s
+                style:
+                  color: '#d6c49b'
+                  fontWeight: 400
+        series:
+          - entity: sensor.decaid_last_shot_curve
+            name: Druck
+            unit: bar
+            yaxis_id: pressure
+            color: '#a8c99f'
+            data_generator: |
+              const a = entity.attributes;
+              return (a.time_s || []).map((t, i) => [start.getTime() + t * 1000, a.pressure?.[i] ?? null]);
+          - entity: sensor.decaid_last_shot_curve
+            name: Durchfluss
+            unit: mL/s
+            yaxis_id: flow
+            color: '#d6c49b'
+            data_generator: |
+              const a = entity.attributes;
+              return (a.time_s || []).map((t, i) => [start.getTime() + t * 1000, a.flow?.[i] ?? null]);
+          - entity: sensor.decaid_last_shot_curve
+            name: Druck Soll
+            unit: bar
+            yaxis_id: pressure
+            color: '#a8c99f'
+            stroke_width: 1
+            stroke_dash: 5
+            opacity: 0.45
+            data_generator: |
+              const a = entity.attributes;
+              return (a.time_s || []).map((t, i) => [start.getTime() + t * 1000, a.target_pressure?.[i] ?? null]);
+          - entity: sensor.decaid_last_shot_curve
+            name: Durchfluss Soll
+            unit: mL/s
+            yaxis_id: flow
+            color: '#d6c49b'
+            stroke_width: 1
+            stroke_dash: 5
+            opacity: 0.45
+            data_generator: |
+              const a = entity.attributes;
+              return (a.time_s || []).map((t, i) => [start.getTime() + t * 1000, a.target_flow?.[i] ?? null]);
+        card_mod:
+          style: |
+            ha-card {
+              background: transparent;
+              border: none;
+              border-radius: 0;
+              box-shadow: none;
+              padding: 4px 4px 0;
+            }

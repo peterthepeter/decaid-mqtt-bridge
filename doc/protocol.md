@@ -207,3 +207,22 @@ connection. A success log is emitted only after MQTT CONNECT, command-topic
 SUBACK, and the first retained state PUBACK. Verification times out after ten
 seconds and reports which acknowledgement was missing. Credentials are never
 included in diagnostic logs.
+
+## Last espresso curve
+
+`{topic_prefix}/shot/last` contains one retained QoS 1 JSON document, separate
+from live `/state`. It is sent after a usable stored espresso record and on
+MQTT reconnect, not with each telemetry update. On plugin startup the latest
+stored shot is read from Decaid. Home Assistant discovery creates one
+`last_shot_curve` sensor with the shot ID as state and the JSON document as
+attributes. It deliberately has no live availability dependency: historical
+curves stay readable with the tablet or machine offline.
+
+The schema (`schema_version: 1`) is documented in the
+[card setup guide](../examples/home-assistant/decent-shot-curve.md#verfügbare-attribute).
+Only strictly increasing timestamps from Espresso machine samples qualify.
+Steam, hot-water, rinse and cleaning samples are excluded. At least two timed
+samples and a finite pressure or flow value are required. Invalid records leave
+the previous curve untouched. Arrays share one relative time axis, use `null`
+for missing values and are bounded to 512 points (including first and last).
+The configured broker account must also be allowed to publish `/shot/last`.

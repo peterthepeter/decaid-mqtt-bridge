@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-10-04
+
+- Add a retained last-espresso curve topic and one automatically discovered
+  Home Assistant sensor, independent of live telemetry and machine availability.
+- Restore curves at startup and republish after MQTT reconnect; preserve them
+  through steam, hot water, rinse, cleaning and new espresso starts.
+- Include aligned pressure, flow, temperature, weight and target arrays, bounded
+  to 512 points with gaps for missing readings.
+- Add a dark ApexCharts dashboard example and Recorder exclusion guidance.
+
 ## 0.2.7 — 2026-10-02
 
 - Preserve completed-shot results when `shotStored` arrives while the machine
