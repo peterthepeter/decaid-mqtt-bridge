@@ -9,7 +9,10 @@ broker. It is wire-compatible with the de1app MQTT plugin
 Home Assistant, Node-RED, and custom MQTT consumers can keep using the same
 base message format.
 
-Version 0.3.0 adds retained curves of the last recorded espresso shot, automatic
+Version 0.3.1 simplifies the author shown in Decaid to `peterthepeter`.
+Project attribution remains documented below and in the license.
+
+The bridge includes retained curves of the last recorded espresso shot, automatic
 Home Assistant sensor discovery, and a dashboard example for ApexCharts.
 The curve remains available through steaming, rinsing, sleep and new shot starts.
 Automated unit and integration tests cover data extraction and MQTT delivery.

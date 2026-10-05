@@ -12902,7 +12902,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
       unique_id: entityId(config, key),
       availability: availability(config, availabilityKind),
       device: device(config, metadata),
-      origin: { name: "Decaid MQTT Bridge", sw_version: "0.3.0" }
+      origin: { name: "Decaid MQTT Bridge", sw_version: "0.3.1" }
     };
   }
   function stateEntity(config, metadata, component, definition) {

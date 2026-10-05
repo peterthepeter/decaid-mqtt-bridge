@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-05
+
+- Simplify the plugin author shown in Decaid to `peterthepeter`; preserve
+  upstream attribution in the README and license.
+
 ## 0.3.0 — 2026-10-04
 
 - Add a retained last-espresso curve topic and one automatically discovered
